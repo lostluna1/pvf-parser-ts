@@ -27,6 +27,14 @@ export function registerListLinkProvider(context: vscode.ExtensionContext, model
       };
 
       // helper: resolve a possibly relative filePath against the document location and model keys
+      const isLikelyPath = (s: string) => {
+        const low = s.toLowerCase();
+        // path-like if contains a slash or has a file extension like .kor.str, .ani, .skl, etc.
+        if (low.indexOf('/') >= 0) return true;
+        if (/\.[a-z0-9]{1,10}($|\.)/i.test(low)) return true; // has extension or composite extension
+        if (/\.[a-z0-9]{1,5}$/i.test(low)) return true;
+        return false;
+      };
       const resolveKey = (filePathRaw: string) => {
         const filePath = filePathRaw.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
         // exact match
@@ -56,6 +64,8 @@ export function registerListLinkProvider(context: vscode.ExtensionContext, model
           const m = line.match(/^\s*(\d+)\s*\t\s*`([^`]+)`\s*$/);
           if (m) {
             const filePath = m[2].toLowerCase();
+            // if the content inside backticks doesn't look like a path, don't create a link
+            if (!isLikelyPath(filePath)) continue;
             // prefer link range that only covers the `path` content (exclude id)
             const startTick = line.indexOf('`');
             let range: vscode.Range;
@@ -83,6 +93,8 @@ export function registerListLinkProvider(context: vscode.ExtensionContext, model
             const mPath = nextLine.match(/^\s*`([^`]+)`\s*$/);
             if (mPath) {
               const filePath = mPath[1].toLowerCase();
+              // skip non-path-like entries (these are likely display names, not file paths)
+              if (!isLikelyPath(filePath)) { i++; continue; }
               // only link the path portion on the next line (inside backticks)
               const startTick = nextLine.indexOf('`');
               let range: vscode.Range;
