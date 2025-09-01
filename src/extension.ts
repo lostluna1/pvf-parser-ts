@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { PvfModel, PvfFileEntry } from './pvf/model';
 import { PvfProvider } from './pvf/provider';
+import { registerListLinkProvider } from './pvf/listLinkProvider';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
@@ -8,6 +9,8 @@ export function activate(context: vscode.ExtensionContext) {
     const tree = new PvfProvider(model, output);
 
     vscode.window.registerTreeDataProvider('pvfExplorerView', tree);
+    // register document link provider for .lst files
+    registerListLinkProvider(context, model);
 
     context.subscriptions.push(
         // clipboard/compare storage
@@ -271,40 +274,77 @@ export function activate(context: vscode.ExtensionContext) {
             rename(): void { /* implement if needed */ }
         })(), { isCaseSensitive: true, isReadonly: false }),
 
-        vscode.commands.registerCommand('pvf.openFile', async (node: PvfFileEntry) => {
-            if (!node.isFile) return;
-            const uri = vscode.Uri.parse(`pvf:/${node.key}`);
+        vscode.commands.registerCommand('pvf.openFile', async (nodeArg: any) => {
             try {
-                const doc = await vscode.workspace.openTextDocument(uri);
-                await vscode.window.showTextDocument(doc, { preview: false });
-            } catch (e) {
-                // Fallback: 通过模型的编码检测获取可读文本，避免乱码
-                try {
-                    const text = await model.getTextViewAsync(node.key);
-                    const doc = await vscode.workspace.openTextDocument({ content: text, language: 'plaintext' });
-                    await vscode.window.showTextDocument(doc, { preview: false });
-                } catch (e2) {
-                    vscode.window.showErrorMessage('无法打开文件为文本');
+                // normalize argument: may be PvfFileEntry, array-wrapped, or simple object
+                let node = nodeArg;
+                if (Array.isArray(nodeArg) && nodeArg.length > 0) node = nodeArg[0];
+                // if command was invoked with a wrapped JSON string, try parse
+                if (typeof node === 'string') {
+                    try { node = JSON.parse(node); } catch { /* ignore */ }
                 }
+                output.appendLine(`[PVF] openFile invoked arg=${JSON.stringify(node)}`);
+                if (!node || !node.key) {
+                    output.appendLine('[PVF] openFile: missing node or key');
+                    return;
+                }
+                const key = String(node.key).replace(/^\/+/, '');
+                const f = model.getFileByKey(key);
+                output.appendLine(`[PVF] openFile: key=${key} fileExists=${!!f}`);
+                if (!f) {
+                    vscode.window.showErrorMessage(`文件未在封包中找到: ${key}`);
+                    return;
+                }
+
+                // First attempt: open the virtual pvf: URI so DocumentLinkProvider and editor features apply
+                const uri = vscode.Uri.parse(`pvf:/${key}`);
+                try {
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    output.appendLine(`[PVF] openFile: opened pvf: doc length=${doc.getText().length}`);
+                    await vscode.window.showTextDocument(doc, { preview: false });
+                    // if the document appears empty, fallback to model-provided decoding/decompile
+                    if (!doc.getText() || doc.getText().length === 0) {
+                        output.appendLine(`[PVF] openFile: pvf: doc empty for ${key}, falling back to model.getTextViewAsync`);
+                        try {
+                            const text = await model.getTextViewAsync(key);
+                            if (text && text.length > 0) {
+                                const doc2 = await vscode.workspace.openTextDocument({ content: text, language: 'plaintext' });
+                                await vscode.window.showTextDocument(doc2, { preview: false });
+                            } else {
+                                output.appendLine(`[PVF] openFile: model.getTextViewAsync returned empty for ${key}`);
+                                vscode.window.showWarningMessage('打开的文件内容为空');
+                            }
+                        } catch (e) {
+                            output.appendLine(`[PVF] openFile: getTextViewAsync failed for ${key}: ${String(e)}`);
+                            vscode.window.showErrorMessage('打开文件失败');
+                        }
+                    }
+                    return;
+                } catch (e) {
+                    output.appendLine(`[PVF] openFile: opening pvf:/${key} failed: ${String(e)}`);
+                }
+
+                // Fallback: use model-provided bytes (handles decompile/encoding) and open as a text document
+                try {
+                    const bytes = await (model as any).readFileBytes(key);
+                    if (bytes && bytes.length > 0) {
+                        const text = Buffer.from(bytes).toString('utf8');
+                        const doc = await vscode.workspace.openTextDocument({ content: text, language: 'plaintext' });
+                        await vscode.window.showTextDocument(doc, { preview: false });
+                        return;
+                    } else {
+                        output.appendLine(`[PVF] openFile: model.readFileBytes returned empty for ${key}`);
+                    }
+                } catch (e) {
+                    output.appendLine(`[PVF] openFile: readFileBytes failed for ${key}: ${String(e)}`);
+                }
+
+                // Last resort: notify
+                vscode.window.showWarningMessage('打开的文件内容为空或无法读取');
+            } catch (ex) {
+                output.appendLine(`[PVF] openFile exception: ${String(ex)}`);
             }
         }),
-
-        // Debug: print detectEncoding and head bytes for a file key to PVF output
-        vscode.commands.registerCommand('pvf.debugDetectEncoding', async (node: PvfFileEntry) => {
-            let key: string | undefined = node && node.key;
-            if (!key) {
-                key = await vscode.window.showInputBox({ prompt: '输入文件 key（例如: common/emoticon/against.ani）' });
-                if (!key) return;
-            }
-            try {
-                const info = (model as any).debugDetectEncoding(key);
-                output.appendLine(`[PVF DEBUG] key=${key} encoding=${info.encoding} hasBom=${info.hasBom} head=${info.headHex}`);
-                vscode.window.showInformationMessage('PVF: debug 信息已写入输出面板');
-            } catch (err) {
-                output.appendLine('[PVF DEBUG] error: ' + String(err));
-                vscode.window.showErrorMessage('读取 debug 信息失败');
-            }
-        })
 
     );
 }
