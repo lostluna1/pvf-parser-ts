@@ -123,6 +123,14 @@ export class PvfModel {
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
+    // .ani：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
+    if (lower.endsWith('.ani') && !f.isScriptFile) {
+      const txt = this.decompileBinaryAni(f);
+      if (txt !== null) {
+        const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(txt, 'utf8')]);
+        return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
+      }
+    }
     if (lower.endsWith('.nut')) {
       const text = iconv.decode(Buffer.from(raw.subarray(0, f.dataLen)), 'cp949');
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
@@ -130,8 +138,9 @@ export class PvfModel {
     }
     // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
     if (this.isTextByExtension(lower)) {
-      const enc = this.encodingForKey(lower);
-      const text = iconv.decode(Buffer.from(raw.subarray(0, f.dataLen)), enc);
+      const sliceForDetect = raw.subarray(0, f.dataLen);
+      const enc = this.detectEncoding(key, sliceForDetect);
+      const text = iconv.decode(Buffer.from(sliceForDetect), enc);
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
@@ -268,7 +277,7 @@ export class PvfModel {
     }
     if (this.isTextByExtension(lower)) {
       const src = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-      const enc = this.encodingForKey(lower);
+      const enc = this.detectEncoding(key, src);
       const text = iconv.decode(Buffer.from(src), enc);
       return Buffer.byteLength(text, 'utf8') + 3;
     }
@@ -462,7 +471,8 @@ export class PvfModel {
       || lowerKey.endsWith('.cfg')
       || lowerKey.endsWith('.def')
       || lowerKey.endsWith('.inc')
-      || lowerKey.endsWith('.xml');
+      || lowerKey.endsWith('.xml')
+      || lowerKey.endsWith('.ani');
   }
 
   private detectEncoding(key: string, bytes: Uint8Array): string {
@@ -474,7 +484,7 @@ export class PvfModel {
       if (bytes[0] === 0xFE && bytes[1] === 0xFF) return 'utf16be';
     }
     // 2) Heuristic: UTF-16LE/BE detection via NUL distribution
-    if (bytes.length >= 10) {
+    if (bytes.length >= 4) {
       let nulEven = 0, nulOdd = 0;
       const n = Math.min(bytes.length, 4096);
       for (let i = 0; i < n; i++) {
@@ -544,6 +554,210 @@ export class PvfModel {
 
   // compatibility alias
   private async readAndDecrypt(f: PvfFile): Promise<Uint8Array> { return readAndDecryptImpl.call(this, f); }
+
+  // Debug helper: return detected encoding and head bytes (hex) for a key
+  public debugDetectEncoding(key: string): { encoding: string; headHex: string; hasBom: boolean } {
+    const f = this.fileList.get(key);
+    if (!f) return { encoding: '', headHex: '', hasBom: false };
+    const slice = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
+    const enc = this.detectEncoding(key, slice);
+    const head = Buffer.from(slice.subarray(0, Math.min(64, slice.length))).toString('hex');
+    const hasBom = slice.length >= 2 && ((slice[0] === 0xFF && slice[1] === 0xFE) || (slice[0] === 0xFE && slice[1] === 0xFF) || (slice[0] === 0xEF && slice[1] === 0xBB));
+    return { encoding: enc, headHex: head, hasBom };
+  }
+
+  // Try to decompile binary .ani to text following pvfUtility.BinaryAniCompiler logic.
+  // Returns text on success, null on failure/non-binary text.
+  private decompileBinaryAni(f: PvfFile): string | null {
+    if (!f.data || f.dataLen <= 0) return '';
+    try {
+      const buf = f.data;
+      const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+      let pos = 0;
+      const readUInt16 = () => { const v = view.getUint16(pos, true); pos += 2; return v; };
+      const readInt16 = () => { const v = view.getInt16(pos, true); pos += 2; return v; };
+      const readUInt32 = () => { const v = view.getUint32(pos, true); pos += 4; return v; };
+      const readInt32 = () => { const v = view.getInt32(pos, true); pos += 4; return v; };
+      const readByte = () => { const v = buf[pos]; pos += 1; return v; };
+      const readFloat = () => { const v = view.getFloat32(pos, true); pos += 4; return v; };
+      const read256 = () => readByte();
+      const readString = (len: number) => {
+        if (len <= 0) return '';
+        const b = Buffer.from(buf.subarray(pos, pos + len));
+        pos += len;
+        return b.toString('ascii');
+      };
+
+      // Quick check: some .ani are plain ASCII text that starts with "[FRAME MAX]" (pvfUtility special-case)
+      if (f.dataLen >= 10) {
+        const head = Buffer.from(buf.subarray(0, Math.min(10, f.dataLen))).toString('ascii');
+        if (head.indexOf('[FRAME MAX]') === 0 || head.indexOf('#PVF_File') === 0) {
+          return Buffer.from(buf.subarray(0, f.dataLen)).toString('ascii');
+        }
+      }
+
+      // Begin parsing binary ANI per pvfUtility
+      const imgList: string[] = [];
+      const sb: string[] = [];
+      sb.push('#PVF_File');
+      const frameMax = readUInt16();
+      const imgCount = readUInt16();
+      for (let i = 0; i < imgCount; i++) {
+        const slen = readInt32();
+        imgList.push(readString(slen));
+      }
+      const aniOverallItem = readUInt16();
+      for (let j = 0; j < aniOverallItem; j++) {
+        const data = readUInt16();
+        switch (data) {
+          case ANIData.LOOP:
+          case ANIData.SHADOW:
+            sb.push(''); sb.push('[' + ANIData[data] + ']'); sb.push('\t' + String(readByte()));
+            break;
+          case ANIData.COORD:
+          case ANIData.OPERATION:
+            sb.push(''); sb.push('[' + ANIData[data] + ']'); sb.push('\t' + String(readUInt16()));
+            break;
+          case ANIData.SPECTRUM:
+            sb.push(''); sb.push('[SPECTRUM]'); sb.push('\t' + String(readByte()));
+            sb.push('\t[SPECTRUM TERM]'); sb.push('\t\t' + String(readInt32()));
+            sb.push('\t[SPECTRUM LIFE TIME]'); sb.push('\t\t' + String(readInt32()));
+            sb.push('\t[SPECTRUM COLOR]'); sb.push('\t\t' + [read256(), read256(), read256(), read256()].join('\t'));
+            sb.push('\t[SPECTRUM EFFECT]'); sb.push('\t\t`' + String(readUInt16()) + '`');
+            break;
+          default:
+            return null; // parse error -> not a binary ani we can handle
+        }
+      }
+
+      sb.push('[FRAME MAX]'); sb.push('\t' + String(frameMax));
+      for (let k = 0; k < frameMax; k++) {
+        sb.push(''); sb.push('[FRAME' + k.toString().padStart(3,'0') + ']');
+        const aniBoxItem = readUInt16();
+        const boxLines: string[] = [];
+        for (let l = 0; l < aniBoxItem; l++) {
+          const data = readUInt16();
+          if (data === ANIData.ATTACK_BOX) boxLines.push('\t[ATTACK BOX]');
+          else if (data === ANIData.DAMAGE_BOX) boxLines.push('\t[DAMAGE BOX]');
+          else return null;
+          // read six int32
+          const vals = [readInt32(), readInt32(), readInt32(), readInt32(), readInt32(), readInt32()];
+          boxLines.push('\t' + vals.join('\t'));
+        }
+        sb.push('\t[IMAGE]');
+        const imgIndex = readInt16();
+        if (imgIndex >= 0) {
+          if (imgIndex > imgList.length - 1) return null;
+          sb.push('\t\t`' + imgList[imgIndex] + '`'); sb.push('\t\t' + String(readUInt16()));
+        } else {
+          sb.push('\t\t``'); sb.push('\t\t0');
+        }
+        sb.push('\t[IMAGE POS]'); sb.push('\t\t' + String(readInt32()) + '\t' + String(readInt32()));
+        const frameItem = readUInt16();
+        for (let i = 0; i < frameItem; i++) {
+          const data = readUInt16();
+          switch (data) {
+            case ANIData.LOOP:
+            case ANIData.SHADOW:
+            case ANIData.INTERPOLATION:
+              sb.push('\t[' + ANIData[data] + ']'); sb.push('\t\t' + String(readByte()));
+              break;
+            case ANIData.COORD:
+              sb.push('\t[COORD]'); sb.push('\t\t' + String(readUInt16()));
+              break;
+            case ANIData.PRELOAD:
+              sb.push('\t[PRELOAD]'); sb.push('\t\t1');
+              break;
+            case ANIData.IMAGE_RATE:
+              sb.push('\t[IMAGE RATE]'); sb.push('\t\t' + readFloat() + '\t' + readFloat());
+              break;
+            case ANIData.IMAGE_ROTATE:
+              sb.push('\t[IMAGE ROTATE]'); sb.push('\t\t' + readFloat());
+              break;
+            case ANIData.RGBA:
+              sb.push('\t[RGBA]'); sb.push('\t\t' + [read256(),read256(),read256(),read256()].join('\t'));
+              break;
+            case ANIData.GRAPHIC_EFFECT:
+              const effectIndex = readUInt16();
+              sb.push('\t[GRAPHIC EFFECT]'); sb.push('\t\t`' + String(effectIndex) + '`');
+              if (effectIndex === Effect_Item.MONOCHROME) sb.push('\t\t' + [read256(),read256(),read256()].join('\t'));
+              if (effectIndex === Effect_Item.SPACEDISTORT) sb.push('\t\t' + readInt16() + '\t' + readInt16());
+              break;
+            case ANIData.DELAY:
+              sb.push('\t[DELAY]'); sb.push('\t\t' + String(readInt32()));
+              break;
+            case ANIData.DAMAGE_TYPE:
+              sb.push('\t[DAMAGE TYPE]'); sb.push('\t\t`' + String(readUInt16()) + '`');
+              break;
+            case ANIData.PLAY_SOUND:
+              const sLen = readInt32();
+              const s = readString(sLen);
+              sb.push('\t[PLAY SOUND]'); sb.push('\t\t`' + s + '`');
+              break;
+            case ANIData.SET_FLAG:
+              sb.push('\t[SET FLAG]'); sb.push('\t\t' + String(readInt32()));
+              break;
+            case ANIData.FLIP_TYPE:
+              sb.push('\t[FLIP TYPE]'); sb.push('\t\t`' + String(readUInt16()) + '`');
+              break;
+            case ANIData.LOOP_START:
+              sb.push('\t[LOOP START]');
+              break;
+            case ANIData.LOOP_END:
+              sb.push('\t[LOOP END]'); sb.push('\t\t' + String(readInt32()));
+              break;
+            case ANIData.CLIP:
+              sb.push('\t[CLIP]'); sb.push('\t\t' + [readInt16(),readInt16(),readInt16(),readInt16()].join('\t'));
+              break;
+            default:
+              return null;
+          }
+        }
+        sb.push(...boxLines);
+      }
+      return sb.join('\r\n');
+    } catch (e) {
+      return null;
+    }
+  }
 }
 
-// PvfFile, StringTable, ScriptCompiler, StringView are in separate files
+// enums mapped to pvfUtility C# values
+enum ANIData {
+  LOOP = 0,
+  SHADOW = 1,
+  COORD = 3,
+  IMAGE_RATE = 7,
+  IMAGE_ROTATE = 8,
+  RGBA = 9,
+  INTERPOLATION = 10,
+  GRAPHIC_EFFECT = 11,
+  DELAY = 12,
+  DAMAGE_TYPE = 13,
+  DAMAGE_BOX = 14,
+  ATTACK_BOX = 15,
+  PLAY_SOUND = 16,
+  PRELOAD = 17,
+  SPECTRUM = 18,
+
+  SET_FLAG = 23,
+  FLIP_TYPE = 24,
+  LOOP_START = 25,
+  LOOP_END = 26,
+  CLIP = 27,
+  OPERATION = 28
+}
+
+enum Effect_Item {
+  NONE = 0,
+  DODGE = 1,
+  LINEARDODGE = 2,
+  DARK = 3,
+  XOR = 4,
+  MONOCHROME = 5,
+  SPACEDISTORT = 6
+}
+
+enum DAMAGE_TYPE_Item { NORMAL = 0, SUPERARMOR = 1, UNBREAKABLE = 2 }
+
+enum FLIP_TYPE_Item { HORIZON = 1, VERTICAL = 2, ALL = 3 }

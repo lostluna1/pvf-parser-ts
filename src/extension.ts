@@ -10,7 +10,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('pvfExplorerView', tree);
 
     context.subscriptions.push(
-            vscode.commands.registerCommand('pvf.openPack', async () => {
+        vscode.commands.registerCommand('pvf.openPack', async () => {
             const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: true,
                 canSelectFolders: false,
@@ -18,14 +18,14 @@ export function activate(context: vscode.ExtensionContext) {
                 filters: { 'PVF': ['pvf'] }
             });
             if (!uris || uris.length === 0) { return; }
-                await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '打开 PVF…' }, async (p)=>{
-                    const t0 = Date.now();
-                    output.appendLine(`[PVF] open start: ${uris[0].fsPath}`);
-                    await model.open(uris[0].fsPath, (n: number)=> { p.report({ increment: 0, message: `${n}%` }); });
-                    const ms = Date.now() - t0;
-                    output.appendLine(`[PVF] open done in ${ms}ms (parsed header+tree only)`);
-                });
-                tree.refresh();
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '打开 PVF…' }, async (p) => {
+                const t0 = Date.now();
+                output.appendLine(`[PVF] open start: ${uris[0].fsPath}`);
+                await model.open(uris[0].fsPath, (n: number) => { p.report({ increment: 0, message: `${n}%` }); });
+                const ms = Date.now() - t0;
+                output.appendLine(`[PVF] open done in ${ms}ms (parsed header+tree only)`);
+            });
+            tree.refresh();
         }),
 
         vscode.commands.registerCommand('pvf.savePack', async () => {
@@ -44,7 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
                     try {
                         // Re-open saved PVF to refresh offsets and baseOffset to match on-disk layout
                         await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '重新加载 PVF…' }, async (pp) => {
-                            await model.open(dest.fsPath, (n:number)=> { pp.report({ increment: 0, message: `${n}%` }); });
+                            await model.open(dest.fsPath, (n: number) => { pp.report({ increment: 0, message: `${n}%` }); });
                         });
                         tree.refresh();
                     } catch (e) {
@@ -73,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
                     vscode.window.showInformationMessage('已保存到当前文件');
                     try {
                         await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '重新加载 PVF…' }, async (pp) => {
-                            await model.open(model.pvfPath, (n:number)=> { pp.report({ increment: 0, message: `${n}%` }); });
+                            await model.open(model.pvfPath, (n: number) => { pp.report({ increment: 0, message: `${n}%` }); });
                         });
                         tree.refresh();
                     } catch {
@@ -137,29 +137,29 @@ export function activate(context: vscode.ExtensionContext) {
             tree.refresh();
         }),
 
-                // Provide editable virtual FS for pvf: scheme
-                    vscode.workspace.registerFileSystemProvider('pvf', new (class implements vscode.FileSystemProvider {
-                    private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-                    onDidChangeFile = this._emitter.event;
-                    watch(): vscode.Disposable { return new vscode.Disposable(() => {}); }
-                        stat(uri: vscode.Uri): vscode.FileStat {
-                            const key = uri.path.replace(/^\//, '');
-                            return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: model.getTextSize(key) };
-                        }
-                    readDirectory(): [string, vscode.FileType][] { return []; }
-                    createDirectory(): void { /* no-op */ }
-                    async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-                        const key = uri.path.replace(/^\//, '');
-                        return await model.readFileBytes(key);
-                    }
-                    async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean; }): Promise<void> {
-                        const key = uri.path.replace(/^\//, '');
-                        model.updateFileData(key, content);
-                        this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
-                    }
-                    delete(): void { /* implement if needed */ }
-                    rename(): void { /* implement if needed */ }
-                })(), { isCaseSensitive: true, isReadonly: false }),
+        // Provide editable virtual FS for pvf: scheme
+        vscode.workspace.registerFileSystemProvider('pvf', new (class implements vscode.FileSystemProvider {
+            private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+            onDidChangeFile = this._emitter.event;
+            watch(): vscode.Disposable { return new vscode.Disposable(() => { }); }
+            stat(uri: vscode.Uri): vscode.FileStat {
+                const key = uri.path.replace(/^\//, '');
+                return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: model.getTextSize(key) };
+            }
+            readDirectory(): [string, vscode.FileType][] { return []; }
+            createDirectory(): void { /* no-op */ }
+            async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+                const key = uri.path.replace(/^\//, '');
+                return await model.readFileBytes(key);
+            }
+            async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean; }): Promise<void> {
+                const key = uri.path.replace(/^\//, '');
+                model.updateFileData(key, content);
+                this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+            }
+            delete(): void { /* implement if needed */ }
+            rename(): void { /* implement if needed */ }
+        })(), { isCaseSensitive: true, isReadonly: false }),
 
         vscode.commands.registerCommand('pvf.openFile', async (node: PvfFileEntry) => {
             if (!node.isFile) return;
@@ -177,7 +177,25 @@ export function activate(context: vscode.ExtensionContext) {
                     vscode.window.showErrorMessage('无法打开文件为文本');
                 }
             }
+        }),
+
+        // Debug: print detectEncoding and head bytes for a file key to PVF output
+        vscode.commands.registerCommand('pvf.debugDetectEncoding', async (node: PvfFileEntry) => {
+            let key: string | undefined = node && node.key;
+            if (!key) {
+                key = await vscode.window.showInputBox({ prompt: '输入文件 key（例如: common/emoticon/against.ani）' });
+                if (!key) return;
+            }
+            try {
+                const info = (model as any).debugDetectEncoding(key);
+                output.appendLine(`[PVF DEBUG] key=${key} encoding=${info.encoding} hasBom=${info.hasBom} head=${info.headHex}`);
+                vscode.window.showInformationMessage('PVF: debug 信息已写入输出面板');
+            } catch (err) {
+                output.appendLine('[PVF DEBUG] error: ' + String(err));
+                vscode.window.showErrorMessage('读取 debug 信息失败');
+            }
         })
+
     );
 }
 
