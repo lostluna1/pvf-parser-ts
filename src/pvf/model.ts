@@ -8,18 +8,9 @@ import { ScriptCompiler } from './scriptCompiler';
 import { StringView } from './stringView';
 import { openImpl, saveImpl, readAndDecryptImpl } from './modelIO';
 import { decompileBinaryAni } from './binaryAni';
-
-// File name checksum compatible with pvfUtility DataHelper.GetFileNameHashCode
-function getFileNameHashCode(dataBytes: Uint8Array): number {
-  // Equivalent to C#:
-  // var num = dataBytes.Aggregate<byte, uint>(0x1505, (current, t) => 0x21 * current + t);
-  // return num * 0x21;
-  let num = 0x1505 >>> 0;
-  for (let i = 0; i < dataBytes.length; i++) {
-    num = ((num * 0x21) + dataBytes[i]) >>> 0;
-  }
-  return (num * 0x21) >>> 0;
-}
+import { encodingForKey, isTextByExtension, detectEncoding, isTextEncoding, isPrintableText, formatListText } from './helpers';
+import { getFileNameHashCode as utilGetFileNameHashCode, renderStringTableText as utilRenderStringTableText } from './util';
+import { decompileScript } from './scriptDecompiler';
 
 export interface Progress { (n: number): void }
 
@@ -99,7 +90,7 @@ export class PvfModel {
     const f = this.fileList.get(key);
     if (!f) return '';
     const data = await this.readAndDecrypt(f);
-    const enc = this.detectEncoding(key, data.subarray(0, f.dataLen));
+    const enc = detectEncoding(key, data.subarray(0, f.dataLen));
     this.encodingCache.set(key, enc);
     return iconv.decode(Buffer.from(data.subarray(0, f.dataLen)), enc);
   }
@@ -116,13 +107,13 @@ export class PvfModel {
     if (f.isScriptFile) {
       let text = this.decompileScript(f);
       const lowerKey = key.toLowerCase();
-      if (lowerKey.endsWith('.lst')) text = this.formatListText(text);
+      if (lowerKey.endsWith('.lst')) text = formatListText(text);
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
     const lower = key.toLowerCase();
     if (lower === 'stringtable.bin') {
-      const text = this.renderStringTableText();
+      const text = utilRenderStringTableText(this.fileList, this.strtable);
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
@@ -140,19 +131,19 @@ export class PvfModel {
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
     // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
-    if (this.isTextByExtension(lower)) {
+    if (isTextByExtension(lower)) {
       const sliceForDetect = raw.subarray(0, f.dataLen);
-      const enc = this.detectEncoding(key, sliceForDetect);
+      const enc = detectEncoding(key, sliceForDetect);
       const text = iconv.decode(Buffer.from(sliceForDetect), enc);
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
     // Heuristic fallback: try decode as text if it looks textual (UTF-16 or cp94x)
     const slice = raw.subarray(0, f.dataLen);
-    const enc2 = this.detectEncoding(key, slice);
-    if (this.isTextEncoding(enc2)) {
+    const enc2 = detectEncoding(key, slice);
+    if (isTextEncoding(enc2)) {
       const text = iconv.decode(Buffer.from(slice), enc2);
-      if (this.isPrintableText(text)) {
+      if (isPrintableText(text)) {
         const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
         return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
       }
@@ -180,7 +171,7 @@ export class PvfModel {
     if (f.isScriptFile) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-      if (!this.strtable) this.strtable = new StringTable(this.encodingForKey('stringtable.bin'));
+      if (!this.strtable) this.strtable = new StringTable(encodingForKey('stringtable.bin'));
       const compiler = new ScriptCompiler(this);
       const data = compiler.compile(text);
       if (data) {
@@ -201,7 +192,7 @@ export class PvfModel {
       if (prefix.startsWith('#PVF_File')) {
         let text = Buffer.from(content).toString('utf8');
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        if (!this.strtable) this.strtable = new StringTable(this.encodingForKey('stringtable.bin'));
+        if (!this.strtable) this.strtable = new StringTable(encodingForKey('stringtable.bin'));
         const compiler = new ScriptCompiler(this);
         const data = compiler.compile(text);
         if (data) {
@@ -218,7 +209,7 @@ export class PvfModel {
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
       // only attempt compile for plausible text content
       if (text.length > 0) {
-        if (!this.strtable) this.strtable = new StringTable(this.encodingForKey('stringtable.bin'));
+        if (!this.strtable) this.strtable = new StringTable(encodingForKey('stringtable.bin'));
         const compiler2 = new ScriptCompiler(this);
         const compiled = compiler2.compile(text);
         if (compiled && compiled.length >= 2 && compiled[0] === 0xB0 && compiled[1] === 0xD0) {
@@ -241,10 +232,10 @@ export class PvfModel {
       return true;
     }
     // 其他已知文本类型：UTF-8 -> 封包默认编码（通常 cp950）
-    if (this.isTextByExtension(lower)) {
+    if (isTextByExtension(lower)) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-      const enc = this.encodingForKey(lower);
+      const enc = encodingForKey(lower);
       const encoded = iconv.encode(text, enc);
       f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       f.changed = true;
@@ -266,12 +257,12 @@ export class PvfModel {
     if (!f) return 0;
     if (f.isScriptFile) {
       let text = this.decompileScript(f);
-      if (key.toLowerCase().endsWith('.lst')) text = this.formatListText(text);
+      if (key.toLowerCase().endsWith('.lst')) text = formatListText(text);
       return Buffer.byteLength(text, 'utf8') + 3;
     }
     const lower = key.toLowerCase();
     if (lower === 'stringtable.bin') {
-      const text = this.renderStringTableText();
+      const text = utilRenderStringTableText(this.fileList, this.strtable);
       return Buffer.byteLength(text, 'utf8') + 3;
     }
     if (lower.endsWith('.nut')) {
@@ -279,19 +270,19 @@ export class PvfModel {
       const text = iconv.decode(Buffer.from(src), 'cp949');
       return Buffer.byteLength(text, 'utf8') + 3;
     }
-    if (this.isTextByExtension(lower)) {
+    if (isTextByExtension(lower)) {
       const src = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-      const enc = this.detectEncoding(key, src);
+      const enc = detectEncoding(key, src);
       const text = iconv.decode(Buffer.from(src), enc);
       return Buffer.byteLength(text, 'utf8') + 3;
     }
     // Heuristic fallback for other potential text files
     if (f.data && f.dataLen > 0) {
       const slice = f.data.subarray(0, f.dataLen);
-      const enc2 = this.detectEncoding(key, slice);
-      if (this.isTextEncoding(enc2)) {
+      const enc2 = detectEncoding(key, slice);
+      if (isTextEncoding(enc2)) {
         const text = iconv.decode(Buffer.from(slice), enc2);
-        if (this.isPrintableText(text)) return Buffer.byteLength(text, 'utf8') + 3;
+        if (isPrintableText(text)) return Buffer.byteLength(text, 'utf8') + 3;
       }
     }
     return f.dataLen;
@@ -326,7 +317,7 @@ export class PvfModel {
     if (this.fileList.has(k)) return false;
     // default checksum and offsets; zero-length file
     const nameBytes = iconv.encode(k, 'cp949');
-    const pf = new PvfFile(getFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
+    const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
     this.fileList.set(k, pf);
@@ -343,7 +334,7 @@ export class PvfModel {
     // We'll create a hidden placeholder file named `${k}/.folder` so folder exists in listings
     const placeholderKey = `${k}/.folder`;
     const nameBytes = iconv.encode(placeholderKey, 'cp949');
-    const pf = new PvfFile(getFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
+    const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
     this.fileList.set(placeholderKey, pf);
@@ -364,80 +355,7 @@ export class PvfModel {
     return true;
   }
 
-  private decompileScript(f: PvfFile): string {
-    const data = f.data!;
-    const items: { t: number, v: number }[] = [];
-    for (let i = 2; i < f.dataLen - 4; i += 5) {
-      const t = data[i];
-      const v = (data[i + 1] | (data[i + 2] << 8) | (data[i + 3] << 16) | (data[i + 4] << 24)) >>> 0;
-      if (t >= 2 && t <= 10) items.push({ t, v });
-    }
-    const sb: string[] = [];
-    sb.push('#PVF_File');
-
-    const getStr = (idx: number) => this.strtable?.get(idx) ?? `#${idx}`;
-    const getStrLink = (id: number, nameIdx: number) => this.strview?.get(id, getStr(nameIdx)) ?? '';
-
-    let i = 0;
-    while (i < items.length) {
-      const { t, v } = items[i];
-      // Section tag (heuristic: type==5 or stringtable returns bracketed tag)
-      if (t === 5 || (this.strtable && getStr(v).startsWith('['))) {
-        sb.push('');
-        sb.push(getStr(v));
-        i++;
-        // After a section, emit following values in lines until next section
-        // We'll print in reasonable groups: numbers in one line, strings as their own lines
-        while (i < items.length) {
-          const nt = items[i].t;
-          const nv = items[i].v;
-          if (nt === 5 || (this.strtable && getStr(nv).startsWith('['))) break;
-          // StringLinkIndex + StringLink pair
-          if (nt === 9 && i + 1 < items.length && items[i + 1].t === 10) {
-            const name = getStr(items[i + 1].v);
-            const val = getStrLink(nv, items[i + 1].v);
-            sb.push(`\t\`${val || ''}\``);
-            i += 2;
-            continue;
-          }
-          // Plain string
-          if (nt === 7) {
-            sb.push(`\t\`${getStr(nv)}\``);
-            i++;
-            continue;
-          }
-          // Numbers (int/float heuristic)
-          const line: string[] = [];
-          while (i < items.length) {
-            const kt = items[i].t;
-            const kv = items[i].v;
-            if (kt === 5 || kt === 7 || kt === 9) break;
-            const f32 = new DataView(new Uint32Array([kv]).buffer).getFloat32(0, true);
-            const asFloat = Number.isFinite(f32) && (Math.abs(kv) > 1_000_000 || Math.abs(f32 % 1) > 1e-6);
-            line.push(asFloat ? this.formatFloat(f32) : String(kv));
-            i++;
-          }
-          if (line.length) sb.push('\t' + line.join('\t'));
-        }
-        continue;
-      }
-      // Fallbacks
-      if (t === 7) {
-        sb.push(`\t\`${getStr(v)}\``);
-      } else if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
-        const name = getStr(items[i + 1].v);
-        const val = getStrLink(v, items[i + 1].v);
-        sb.push(`\t\`${val || ''}\``);
-        i++;
-      } else {
-        const f32 = new DataView(new Uint32Array([v]).buffer).getFloat32(0, true);
-        const asFloat = Number.isFinite(f32) && (Math.abs(v) > 1_000_000 || Math.abs(f32 % 1) > 1e-6);
-        sb.push((asFloat ? this.formatFloat(f32) : String(v)));
-      }
-      i++;
-    }
-    return sb.join('\n');
-  }
+  private decompileScript(f: PvfFile): string { return decompileScript(this, f); }
 
   private formatFloat(n: number): string {
     // mimic C# FormatFloat: trim trailing zeros
@@ -461,78 +379,6 @@ export class PvfModel {
     }
   }
 
-  private encodingForKey(key: string): string {
-    const lower = key.toLowerCase();
-    if (lower.endsWith('.nut')) return 'cp949';
-    return 'cp950';
-  }
-
-  private isTextByExtension(lowerKey: string): boolean {
-    // Extendable list; treat these as text files decoded via encodingForKey
-    return lowerKey.endsWith('.skl')
-      || lowerKey.endsWith('.lst')
-      || lowerKey.endsWith('.txt')
-      || lowerKey.endsWith('.cfg')
-      || lowerKey.endsWith('.def')
-      || lowerKey.endsWith('.inc')
-      || lowerKey.endsWith('.xml')
-      || lowerKey.endsWith('.ani');
-  }
-
-  private detectEncoding(key: string, bytes: Uint8Array): string {
-    // 1) Explicit rules first
-    const preferred = this.encodingForKey(key);
-    if (bytes.length >= 2) {
-      // BOM checks
-      if (bytes[0] === 0xFF && bytes[1] === 0xFE) return 'utf16le';
-      if (bytes[0] === 0xFE && bytes[1] === 0xFF) return 'utf16be';
-    }
-    // 2) Heuristic: UTF-16LE/BE detection via NUL distribution
-    if (bytes.length >= 4) {
-      let nulEven = 0, nulOdd = 0;
-      const n = Math.min(bytes.length, 4096);
-      for (let i = 0; i < n; i++) {
-        if (bytes[i] === 0) {
-          if ((i & 1) === 0) nulEven++; else nulOdd++;
-        }
-      }
-      const nulRatio = (nulEven + nulOdd) / n;
-      if (nulRatio > 0.2) {
-        // decide endianness by which side has more zeros
-        return nulEven > nulOdd ? 'utf16le' : 'utf16be';
-      }
-    }
-    // 3) Default to preferred (TW for non-.nut)
-    return preferred;
-  }
-
-  private isTextEncoding(enc: string): boolean {
-    return enc === 'utf16le' || enc === 'utf16be' || enc === 'cp949' || enc === 'cp950' || enc === 'utf8';
-  }
-
-  private isPrintableText(text: string): boolean {
-    if (!text) return false;
-    const n = Math.min(text.length, 4096);
-    if (n === 0) return false;
-    let printable = 0;
-    for (let i = 0; i < n; i++) {
-      const c = text.charCodeAt(i);
-      // allow common whitespace and CJK, punctuation etc.
-      if (c === 9 || c === 10 || c === 13 || (c >= 32 && c !== 127)) printable++;
-    }
-    return (printable / n) > 0.85;
-  }
-
-  private renderStringTableText(): string {
-    if (this.strtable) return this.strtable.dumpText();
-    const f = this.fileList.get('stringtable.bin');
-    if (!f) return '';
-    const bytes = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-    const st = new StringTable('cp950');
-    st.load(bytes);
-    return st.dumpText();
-  }
-
   private async ensureStringTableUpToDate(): Promise<void> {
     if (!this.strtable) return;
     if (!this.strtable.isUpdated) return;
@@ -544,7 +390,7 @@ export class PvfModel {
       existing.changed = true;
     } else {
       const nameBytes = iconv.encode('stringtable.bin', 'cp949');
-      const pf = new PvfFile(getFileNameHashCode(nameBytes), nameBytes, bin.length, 0, 0);
+      const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, bin.length, 0, 0);
       pf.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
       pf.changed = true;
       this.fileList.set('stringtable.bin', pf);
@@ -558,17 +404,6 @@ export class PvfModel {
 
   // compatibility alias
   private async readAndDecrypt(f: PvfFile): Promise<Uint8Array> { return readAndDecryptImpl.call(this, f); }
-
-  // Debug helper: return detected encoding and head bytes (hex) for a key
-  public debugDetectEncoding(key: string): { encoding: string; headHex: string; hasBom: boolean } {
-    const f = this.fileList.get(key);
-    if (!f) return { encoding: '', headHex: '', hasBom: false };
-    const slice = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-    const enc = this.detectEncoding(key, slice);
-    const head = Buffer.from(slice.subarray(0, Math.min(64, slice.length))).toString('hex');
-    const hasBom = slice.length >= 2 && ((slice[0] === 0xFF && slice[1] === 0xFE) || (slice[0] === 0xFE && slice[1] === 0xFF) || (slice[0] === 0xEF && slice[1] === 0xBB));
-    return { encoding: enc, headHex: head, hasBom };
-  }
 
   // Return a list of all file keys in the pack
   public getAllKeys(): string[] {
@@ -597,14 +432,14 @@ export class PvfModel {
         }
         // stringtable: render and search
         if (lower === 'stringtable.bin') {
-          const txt = this.renderStringTableText();
+          const txt = utilRenderStringTableText(this.fileList, this.strtable);
           if (txt.toLowerCase().indexOf(base) >= 0 || txt.toLowerCase().indexOf(key.toLowerCase()) >= 0) { result.push(k); continue; }
         }
         // other text-like files: try decode and search
         if (f.data && f.dataLen > 0) {
           const slice = f.data.subarray(0, f.dataLen);
-          const enc = this.detectEncoding(k, slice);
-          if (this.isTextEncoding(enc)) {
+          const enc = detectEncoding(k, slice);
+          if (isTextEncoding(enc)) {
             const txt = iconv.decode(Buffer.from(slice), enc).toLowerCase();
             if (txt.indexOf(base) >= 0 || txt.indexOf(key.toLowerCase()) >= 0) { result.push(k); continue; }
           }
@@ -613,36 +448,6 @@ export class PvfModel {
         // ignore per-file errors
       }
     }
-    return result;
-  }
-
-  // Format .lst decompiled text: remove extra blank lines and normalize line endings
-  private formatListText(text: string): string {
-    if (!text) return text;
-    // Normalize to LF for processing
-    let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    // Remove any blank lines immediately after header (#PVF_File)
-    t = t.replace(/^#PVF_File\n+/, '#PVF_File\n');
-    // Collapse multiple blank lines anywhere into a single blank line
-    t = t.replace(/\n{2,}/g, '\n');
-    // Split lines and merge index + value lines: lines like '123' followed by '\t`...`' -> '123\t`...`'
-    const lines = t.split('\n');
-    const out: string[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const cur = lines[i];
-      const next = i + 1 < lines.length ? lines[i + 1] : undefined;
-      if (/^\s*\d+\s*$/.test(cur) && next && /^\s*`.*`\s*$/.test(next)) {
-        // combine
-        out.push(`${cur.trim()}\t${next.trim()}`);
-        i++; // skip next
-      } else {
-        out.push(cur);
-      }
-    }
-    // Trim leading/trailing whitespace/newlines from the result
-    let result = out.join('\n').trim();
-    // Ensure file ends with a single CRLF
-    result = result + '\r\n';
     return result;
   }
 }

@@ -1,0 +1,80 @@
+import * as iconv from 'iconv-lite';
+
+// Return preferred encoding by key (nut -> cp949, otherwise cp950)
+export function encodingForKey(key: string): string {
+  const lower = key.toLowerCase();
+  if (lower.endsWith('.nut')) return 'cp949';
+  return 'cp950';
+}
+
+// Text-like extensions
+export function isTextByExtension(lowerKey: string): boolean {
+  return lowerKey.endsWith('.skl')
+    || lowerKey.endsWith('.lst')
+    || lowerKey.endsWith('.txt')
+    || lowerKey.endsWith('.cfg')
+    || lowerKey.endsWith('.def')
+    || lowerKey.endsWith('.inc')
+    || lowerKey.endsWith('.xml')
+    || lowerKey.endsWith('.ani');
+}
+
+// Detect encoding using BOM and NUL distribution heuristic; defaults to encodingForKey
+export function detectEncoding(key: string, bytes: Uint8Array): string {
+  const preferred = encodingForKey(key);
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) return 'utf16le';
+    if (bytes[0] === 0xFE && bytes[1] === 0xFF) return 'utf16be';
+  }
+  if (bytes.length >= 4) {
+    let nulEven = 0, nulOdd = 0;
+    const n = Math.min(bytes.length, 4096);
+    for (let i = 0; i < n; i++) {
+      if (bytes[i] === 0) {
+        if ((i & 1) === 0) nulEven++; else nulOdd++;
+      }
+    }
+    const nulRatio = (nulEven + nulOdd) / n;
+    if (nulRatio > 0.2) return nulEven > nulOdd ? 'utf16le' : 'utf16be';
+  }
+  return preferred;
+}
+
+export function isTextEncoding(enc: string): boolean {
+  return enc === 'utf16le' || enc === 'utf16be' || enc === 'cp949' || enc === 'cp950' || enc === 'utf8';
+}
+
+export function isPrintableText(text: string): boolean {
+  if (!text) return false;
+  const n = Math.min(text.length, 4096);
+  if (n === 0) return false;
+  let printable = 0;
+  for (let i = 0; i < n; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13 || (c >= 32 && c !== 127)) printable++;
+  }
+  return (printable / n) > 0.85;
+}
+
+// Format .lst decompiled text: merge index+value lines, collapse blanks, ensure CRLF ending
+export function formatListText(text: string): string {
+  if (!text) return text;
+  let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  t = t.replace(/^#PVF_File\n+/, '#PVF_File\n');
+  t = t.replace(/\n{2,}/g, '\n');
+  const lines = t.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i];
+    const next = i + 1 < lines.length ? lines[i + 1] : undefined;
+    if (/^\s*\d+\s*$/.test(cur) && next && /^\s*`.*`\s*$/.test(next)) {
+      out.push(`${cur.trim()}\t${next.trim()}`);
+      i++; // skip next
+    } else {
+      out.push(cur);
+    }
+  }
+  let result = out.join('\n').trim();
+  result = result + '\r\n';
+  return result;
+}
