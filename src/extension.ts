@@ -119,10 +119,9 @@ export function activate(context: vscode.ExtensionContext) {
                 const doc = await vscode.workspace.openTextDocument(uri);
                 await vscode.window.showTextDocument(doc, { preview: false });
             } catch (e) {
-                // Fallback: 强制以文本打开（将内容读到新建untitled文本），极端情况下绕过VSCode的二进制拦截
+                // Fallback: 通过模型的编码检测获取可读文本，避免乱码
                 try {
-                    const bytes = await model.readFileBytes(node.key);
-                    const text = Buffer.from(bytes).toString('utf8');
+                    const text = await model.getTextViewAsync(node.key);
                     const doc = await vscode.workspace.openTextDocument({ content: text, language: 'plaintext' });
                     await vscode.window.showTextDocument(doc, { preview: false });
                 } catch (e2) {

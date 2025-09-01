@@ -242,7 +242,17 @@ export class PvfModel {
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
-    return raw.subarray(0, f.dataLen);
+    // Heuristic fallback: try decode as text if it looks textual (UTF-16 or cp94x)
+    const slice = raw.subarray(0, f.dataLen);
+    const enc2 = this.detectEncoding(key, slice);
+    if (this.isTextEncoding(enc2)) {
+      const text = iconv.decode(Buffer.from(slice), enc2);
+      if (this.isPrintableText(text)) {
+        const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
+        return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
+      }
+    }
+    return slice;
   }
 
   updateFileData(key: string, content: Uint8Array): boolean {
@@ -348,6 +358,15 @@ export class PvfModel {
       const enc = this.encodingForKey(lower);
       const text = iconv.decode(Buffer.from(src), enc);
       return Buffer.byteLength(text, 'utf8') + 3;
+    }
+    // Heuristic fallback for other potential text files
+    if (f.data && f.dataLen > 0) {
+      const slice = f.data.subarray(0, f.dataLen);
+      const enc2 = this.detectEncoding(key, slice);
+      if (this.isTextEncoding(enc2)) {
+        const text = iconv.decode(Buffer.from(slice), enc2);
+        if (this.isPrintableText(text)) return Buffer.byteLength(text, 'utf8') + 3;
+      }
     }
     return f.dataLen;
   }
@@ -528,6 +547,23 @@ export class PvfModel {
     }
     // 3) Default to preferred (TW for non-.nut)
     return preferred;
+  }
+
+  private isTextEncoding(enc: string): boolean {
+    return enc === 'utf16le' || enc === 'utf16be' || enc === 'cp949' || enc === 'cp950' || enc === 'utf8';
+  }
+
+  private isPrintableText(text: string): boolean {
+    if (!text) return false;
+    const n = Math.min(text.length, 4096);
+    if (n === 0) return false;
+    let printable = 0;
+    for (let i=0;i<n;i++) {
+      const c = text.charCodeAt(i);
+      // allow common whitespace and CJK, punctuation etc.
+      if (c === 9 || c === 10 || c === 13 || (c >= 32 && c !== 127)) printable++;
+    }
+    return (printable / n) > 0.85;
   }
 
   private renderStringTableText(): string {
