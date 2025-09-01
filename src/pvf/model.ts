@@ -39,6 +39,7 @@ export class PvfModel {
   // helpers for StringView
   public getStringFromTable(index: number): string | undefined { return this.strtable?.get(index); }
   public getFileByKey(key: string): PvfFile | undefined { return this.fileList.get(key); }
+  public getStringView(): StringView | undefined { return this.strview; }
   public async loadFileData(f: PvfFile): Promise<Uint8Array> { return await readAndDecryptImpl.call(this, f); }
 
   async save(filePath: string, progress?: Progress) { return saveImpl.call(this, filePath, progress); }

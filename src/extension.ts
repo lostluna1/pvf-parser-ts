@@ -346,6 +346,76 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }),
 
+        vscode.commands.registerCommand('pvf.openFuzzyPath', async (arg: any) => {
+            try {
+                let filePath: string | undefined;
+                let baseDir: string = '';
+                if (Array.isArray(arg) && arg.length >= 1) {
+                    filePath = arg[0];
+                    if (arg.length >= 2) baseDir = arg[1] || '';
+                } else if (typeof arg === 'string') {
+                    // could be JSON-encoded
+                    try { const p = JSON.parse(arg); if (Array.isArray(p)) { filePath = p[0]; baseDir = p[1] || ''; } else filePath = arg; } catch { filePath = arg; }
+                } else if (arg && typeof arg === 'object') {
+                    filePath = arg[0] || arg.filePath || arg;
+                }
+                if (!filePath) return;
+                // helper: normalize relative segments against a base directory (like ../ or ./)
+                const joinAndNormalize = (baseDirLocal: string, rel: string) => {
+                    const relParts = String(rel).replace(/^\/+/, '').split('/');
+                    const baseParts = baseDirLocal ? baseDirLocal.split('/').filter(p => p.length > 0) : [];
+                    const out: string[] = [...baseParts];
+                    for (const part of relParts) {
+                        if (part === '..') {
+                            if (out.length > 0) out.pop();
+                        } else if (part === '.' || part === '') {
+                            // skip
+                        } else {
+                            out.push(part);
+                        }
+                    }
+                    return out.join('/');
+                };
+
+                let needle = String(filePath).replace(/^\/+/, '').toLowerCase();
+                // if path contains relative parts, normalize against baseDir
+                if (needle.startsWith('.') || needle.indexOf('..') >= 0) {
+                    const normalized = joinAndNormalize(baseDir || '', filePath);
+                    if (normalized && normalized.length > 0) needle = normalized.toLowerCase();
+                }
+                const base = (baseDir || '').toLowerCase();
+                // search order: exact, baseDir + needle, endsWith('/' + needle), contains
+                const keys: string[] = (model as any).getAllKeys ? (model as any).getAllKeys() : Array.from((model as any).fileList?.keys?.() || []);
+                let found: string | undefined;
+                const exact = keys.find((k: string) => k.toLowerCase() === needle);
+                if (exact) found = exact;
+                if (!found && base) {
+                    const cand = `${base}/${needle}`;
+                    const f2 = keys.find((k: string) => k.toLowerCase() === cand);
+                    if (f2) found = f2;
+                }
+                if (!found) {
+                    const f3 = keys.find((k: string) => k.toLowerCase().endsWith('/' + needle) || k.toLowerCase().endsWith(needle));
+                    if (f3) found = f3;
+                }
+                if (!found) {
+                    const f4 = keys.find((k: string) => k.toLowerCase().indexOf(needle) >= 0);
+                    if (f4) found = f4;
+                }
+                if (!found) {
+                    vscode.window.showWarningMessage(`未在封包中找到: ${filePath}`);
+                    return;
+                }
+                // ignore .img
+                if (found.toLowerCase().endsWith('.img')) { vscode.window.showWarningMessage('目标为图片文件，跳转被忽略'); return; }
+                // reuse pvf.openFile by constructing entry
+                const entry = { key: found, name: found.split('/').pop() || found, isFile: true };
+                await vscode.commands.executeCommand('pvf.openFile', entry);
+            } catch (e) {
+                output.appendLine(`[PVF] openFuzzyPath error: ${String(e)}`);
+            }
+        }),
+
     );
 }
 
