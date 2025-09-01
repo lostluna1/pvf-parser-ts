@@ -1,0 +1,117 @@
+{
+  "name": "pvf-parser-ts",
+  "displayName": "PVF Pack Explorer",
+  "description": "Open, browse and edit PVF pack files.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onFileSystem:pvf"
+  ],
+  "icon": "media/icons8-源代码-48.png",
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pvfExplorer",
+          "title": "PVF",
+          "icon": "./media/icons8-源代码-48.png"
+        }
+      ]
+    },
+    "views": {
+      "pvfExplorer": [
+        {
+          "id": "pvfExplorerView",
+          "name": "PVF 包管理器",
+          "icon": "codicon:archive"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "pvf.openPack",
+        "title": "打开 PVF 封包"
+      },
+      {
+        "command": "pvf.savePack",
+        "title": "保存 PVF 封包"
+      },
+      {
+        "command": "pvf.savePackInPlace",
+        "title": "保存到当前文件"
+      },
+      {
+        "command": "pvf.exportFile",
+        "title": "导出文件"
+      },
+      {
+        "command": "pvf.replaceFile",
+        "title": "替换文件…"
+      },
+      {
+        "command": "pvf.deleteFile",
+        "title": "删除文件"
+      },
+      {
+        "command": "pvf.openFile",
+        "title": "打开文件"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pvf.openPack",
+          "when": "view == pvfExplorerView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pvf.savePack",
+          "when": "view == pvfExplorerView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pvf.savePackInPlace",
+          "when": "view == pvfExplorerView",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "pvf.exportFile",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "inline@1"
+        },
+        {
+          "command": "pvf.replaceFile",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "inline@2"
+        },
+        {
+          "command": "pvf.deleteFile",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "inline@3"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.11",
+    "@types/vscode": "^1.103.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3"
+  }
+}
