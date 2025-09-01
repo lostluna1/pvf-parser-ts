@@ -41,6 +41,16 @@ export function activate(context: vscode.ExtensionContext) {
                 if (ok) {
                     vscode.window.showInformationMessage('另存为成功');
                     (model as any).pvfPath = dest.fsPath;
+                    try {
+                        // Re-open saved PVF to refresh offsets and baseOffset to match on-disk layout
+                        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '重新加载 PVF…' }, async (pp) => {
+                            await model.open(dest.fsPath, (n:number)=> { pp.report({ increment: 0, message: `${n}%` }); });
+                        });
+                        tree.refresh();
+                    } catch (e) {
+                        // ignore reopen failures but notify
+                        vscode.window.showWarningMessage('保存成功，但重新加载封包失败');
+                    }
                 } else {
                     vscode.window.showErrorMessage('保存失败');
                 }
@@ -59,7 +69,19 @@ export function activate(context: vscode.ExtensionContext) {
                     last = Math.max(last, Math.min(100, n));
                     p.report({ increment: inc, message: `${last}%` });
                 });
-                vscode.window.showInformationMessage(ok ? '已保存到当前文件' : '保存失败');
+                if (ok) {
+                    vscode.window.showInformationMessage('已保存到当前文件');
+                    try {
+                        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '重新加载 PVF…' }, async (pp) => {
+                            await model.open(model.pvfPath, (n:number)=> { pp.report({ increment: 0, message: `${n}%` }); });
+                        });
+                        tree.refresh();
+                    } catch {
+                        vscode.window.showWarningMessage('保存成功，但重新加载封包失败');
+                    }
+                } else {
+                    vscode.window.showErrorMessage('保存失败');
+                }
             });
         }),
 
