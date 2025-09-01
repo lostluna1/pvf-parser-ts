@@ -10,6 +10,116 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('pvfExplorerView', tree);
 
     context.subscriptions.push(
+        // clipboard/compare storage
+        vscode.commands.registerCommand('pvf._setClipboard', (payload: any) => {
+            context.workspaceState.update('pvf.clipboard', payload);
+        }),
+        vscode.commands.registerCommand('pvf._getClipboard', async () => {
+            return context.workspaceState.get('pvf.clipboard');
+        }),
+
+        // Select file for compare
+        vscode.commands.registerCommand('pvf.selectForCompare', async (node: PvfFileEntry) => {
+            if (!node) return;
+            await context.workspaceState.update('pvf.compareSelection', node.key);
+            vscode.window.showInformationMessage(`已选择 ${node.name} 用于比较`);
+        }),
+        vscode.commands.registerCommand('pvf.compareWithSelection', async (node: PvfFileEntry) => {
+            if (!node) return;
+            const sel = context.workspaceState.get<string>('pvf.compareSelection');
+            if (!sel) { vscode.window.showWarningMessage('请先选择一个文件用于比较'); return; }
+            // open both as readonly text and use vscode.diff
+            const left = vscode.Uri.parse(`pvf:/${sel}`);
+            const right = vscode.Uri.parse(`pvf:/${node.key}`);
+            vscode.commands.executeCommand('vscode.diff', left, right, `${sel} ↔ ${node.key}`);
+        }),
+
+        // Find references (use model.findReferences if implemented, fallback to simple key search)
+        vscode.commands.registerCommand('pvf.findReferences', async (node: PvfFileEntry) => {
+            if (!node) return;
+            const key = node.key;
+            try {
+                if ((model as any).findReferences) {
+                    const refs: string[] = await (model as any).findReferences(key);
+                    if (!refs || refs.length === 0) { vscode.window.showInformationMessage('未找到引用'); return; }
+                    const pick = await vscode.window.showQuickPick(refs.map(m => ({ label: m })), { canPickMany: false });
+                    if (pick) vscode.commands.executeCommand('pvf.openFile', { key: (pick as any).label, name: (pick as any).label, isFile: true });
+                    return;
+                }
+            } catch (e) {
+                // ignore and fallback
+            }
+            // fallback: search for occurrences of the filename in the pack file keys
+            const base = key.split('/').pop() || key;
+            const matches: string[] = [];
+            for (const k of (model as any).getAllKeys ? (model as any).getAllKeys() : Array.from((model as any).fileList?.keys?.() || [])) {
+                if (k.indexOf(base) >= 0) matches.push(k);
+            }
+            if (!matches || matches.length === 0) { vscode.window.showInformationMessage('未找到引用'); return; }
+            const pick = await vscode.window.showQuickPick(matches.map((m: string) => ({ label: m })), { canPickMany: false });
+            if (pick) vscode.commands.executeCommand('pvf.openFile', { key: (pick as any).label, name: (pick as any).label, isFile: true });
+        }),
+
+        // Cut/Copy/Paste
+        vscode.commands.registerCommand('pvf.cut', async (node: PvfFileEntry) => {
+            if (!node) return;
+            await context.workspaceState.update('pvf.clipboard', { op: 'cut', key: node.key });
+            vscode.window.showInformationMessage(`已剪切 ${node.name}`);
+        }),
+        vscode.commands.registerCommand('pvf.copy', async (node: PvfFileEntry) => {
+            if (!node) return;
+            await context.workspaceState.update('pvf.clipboard', { op: 'copy', key: node.key });
+            vscode.window.showInformationMessage(`已复制 ${node.name}`);
+        }),
+        vscode.commands.registerCommand('pvf.paste', async (node: PvfFileEntry) => {
+            if (!node || node.isFile) { vscode.window.showWarningMessage('请选择目标文件夹粘贴'); return; }
+            const clip = context.workspaceState.get<any>('pvf.clipboard');
+            if (!clip) { vscode.window.showWarningMessage('剪贴板为空'); return; }
+            const destBase = node.key;
+            const f = model.getFileByKey(clip.key);
+            if (!f) { vscode.window.showErrorMessage('源文件不存在'); return; }
+
+            const baseName = clip.key.split('/').pop() || clip.key;
+            // build a unique destKey by appending ' (1)', ' (2)', ... before extension on collision
+            const makeUnique = (name: string) => {
+                const idx = name.lastIndexOf('.');
+                const namePart = idx >= 0 ? name.substring(0, idx) : name;
+                const extPart = idx >= 0 ? name.substring(idx) : '';
+                let candidate = name;
+                let n = 1;
+                while (model.getFileByKey(`${destBase}/${candidate}`)) {
+                    candidate = `${namePart} (${n})${extPart}`;
+                    n++;
+                }
+                return candidate;
+            };
+
+            const uniqueName = makeUnique(baseName);
+            const destKey = `${destBase}/${uniqueName}`;
+
+            const bytes = await model.loadFileData(f);
+            // create and write
+            model.createEmptyFile(destKey);
+            const pf = model.getFileByKey(destKey);
+            if (pf) { pf.writeFileData(bytes); pf.changed = true; }
+
+            if (clip.op === 'cut') {
+                model.deleteFile(clip.key);
+                await context.workspaceState.update('pvf.clipboard', undefined);
+                vscode.window.showInformationMessage('移动完成');
+            } else {
+                vscode.window.showInformationMessage('粘贴完成');
+            }
+            tree.refresh();
+        }),
+
+        // Copy path
+        vscode.commands.registerCommand('pvf.copyPath', async (node: PvfFileEntry) => {
+            if (!node) return;
+            await vscode.env.clipboard.writeText(node.key);
+            vscode.window.showInformationMessage('已复制路径到剪贴板');
+        }),
+
         vscode.commands.registerCommand('pvf.openPack', async () => {
             const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: true,

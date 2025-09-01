@@ -40,6 +40,34 @@
         "title": "打开 PVF 封包"
       },
       {
+        "command": "pvf.selectForCompare",
+        "title": "选择以进行比较"
+      },
+      {
+        "command": "pvf.compareWithSelection",
+        "title": "与所选比较"
+      },
+      {
+        "command": "pvf.findReferences",
+        "title": "查找文件引用"
+      },
+      {
+        "command": "pvf.cut",
+        "title": "剪切"
+      },
+      {
+        "command": "pvf.copy",
+        "title": "复制"
+      },
+      {
+        "command": "pvf.paste",
+        "title": "粘贴"
+      },
+      {
+        "command": "pvf.copyPath",
+        "title": "复制路径"
+      },
+      {
         "command": "pvf.createFolder",
         "title": "新建文件夹"
       },
@@ -99,6 +127,41 @@
           "command": "pvf.exportFile",
           "when": "view == pvfExplorerView && viewItem == pvf.file",
           "group": "navigation@2"
+        },
+        {
+          "command": "pvf.selectForCompare",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pvf.compareWithSelection",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pvf.findReferences",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pvf.cut",
+          "when": "view == pvfExplorerView && viewItem == pvf.file",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pvf.copy",
+          "when": "view == pvfExplorerView && (viewItem == pvf.file || viewItem == pvf.folder)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pvf.paste",
+          "when": "view == pvfExplorerView && viewItem == pvf.folder",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pvf.copyPath",
+          "when": "view == pvfExplorerView && (viewItem == pvf.file || viewItem == pvf.folder)",
+          "group": "navigation@3"
         },
         {
           "command": "pvf.replaceFile",
