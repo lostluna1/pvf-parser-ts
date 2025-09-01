@@ -3,6 +3,18 @@ import * as path from 'path';
 import { PvfCrypto } from './crypto';
 import * as iconv from 'iconv-lite';
 
+// File name checksum compatible with pvfUtility DataHelper.GetFileNameHashCode
+function getFileNameHashCode(dataBytes: Uint8Array): number {
+  // Equivalent to C#:
+  // var num = dataBytes.Aggregate<byte, uint>(0x1505, (current, t) => 0x21 * current + t);
+  // return num * 0x21;
+  let num = 0x1505 >>> 0;
+  for (let i = 0; i < dataBytes.length; i++) {
+    num = ((num * 0x21) + dataBytes[i]) >>> 0;
+  }
+  return (num * 0x21) >>> 0;
+}
+
 export interface Progress { (n: number): void }
 
 export interface PvfFileEntry {
@@ -64,9 +76,9 @@ export class PvfModel {
     this.baseOffset = pos; // remember where data section starts
     await fd.close();
 
-  // reset lazy caches
-  this.childrenCache.clear();
-  this.rootChildren = null;
+    // reset lazy caches
+    this.childrenCache.clear();
+    this.rootChildren = null;
 
     // Load stringtable and string view for script decompile (best-effort)
     try {
@@ -82,8 +94,8 @@ export class PvfModel {
   public async loadFileData(f: PvfFile): Promise<Uint8Array> { return await this.readAndDecrypt(f); }
 
   async save(filePath: string, progress?: Progress) {
-  // Ensure stringtable.bin is rebuilt if updated, mirroring pvfUtility
-  await this.ensureStringTableUpToDate();
+    // Ensure stringtable.bin is rebuilt if updated, mirroring pvfUtility
+    await this.ensureStringTableUpToDate();
 
     const files = [...this.fileList.values()].sort((a, b) => a.fileNameChecksum - b.fileNameChecksum);
     const fileCount = files.length;
@@ -173,7 +185,7 @@ export class PvfModel {
         }
       }
       const dirs: PvfFileEntry[] = [...folders.keys()].map(k => ({ key: k, name: k, isFile: false }));
-  this.rootChildren = [...files, ...dirs].sort((a,b)=> (a.isFile === b.isFile) ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) : (a.isFile ? 1 : -1));
+      this.rootChildren = [...files, ...dirs].sort((a, b) => (a.isFile === b.isFile) ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) : (a.isFile ? 1 : -1));
       return this.rootChildren;
     }
     if (this.childrenCache.has(parent)) return this.childrenCache.get(parent)!;
@@ -196,7 +208,7 @@ export class PvfModel {
         }
       }
     }
-  result.sort((a,b)=> (a.isFile === b.isFile) ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) : (a.isFile ? 1 : -1));
+    result.sort((a, b) => (a.isFile === b.isFile) ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) : (a.isFile ? 1 : -1));
     this.childrenCache.set(parent, result);
     return result;
   }
@@ -256,8 +268,8 @@ export class PvfModel {
   }
 
   updateFileData(key: string, content: Uint8Array): boolean {
-  const f = this.fileList.get(key);
-  if (!f) return false;
+    const f = this.fileList.get(key);
+    if (!f) return false;
     const lower = key.toLowerCase();
     // stringtable.bin：文本视图（index\tvalue） -> 重新构建二进制
     if (lower === 'stringtable.bin') {
@@ -306,6 +318,26 @@ export class PvfModel {
         }
       }
     }
+
+    // 额外尝试：即便不是已识别脚本，也尝试把文本编译为脚本源（便于新建文件后直接写入脚本）
+    try {
+      let text = Buffer.from(content).toString('utf8');
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      // only attempt compile for plausible text content
+      if (text.length > 0) {
+        if (!this.strtable) this.strtable = new StringTable(this.encodingForKey('stringtable.bin'));
+        const compiler2 = new ScriptCompiler(this);
+        const compiled = compiler2.compile(text);
+        if (compiled && compiled.length >= 2 && compiled[0] === 0xB0 && compiled[1] === 0xD0) {
+          f.writeFileData(new Uint8Array(compiled.buffer, compiled.byteOffset, compiled.byteLength));
+          f.changed = true;
+          return true;
+        }
+      }
+    } catch {
+      // ignore compile failures and continue fallback
+    }
+
     // .nut：UTF-8 文本 -> cp949
     if (lower.endsWith('.nut')) {
       let text = Buffer.from(content).toString('utf8');
@@ -374,8 +406,8 @@ export class PvfModel {
   async exportFile(key: string, dest: string) {
     const f = this.fileList.get(key);
     if (!f) return;
-  const data = await this.readAndDecrypt(f);
-  await fs.writeFile(dest, Buffer.from(data.subarray(0, f.dataLen)));
+    const data = await this.readAndDecrypt(f);
+    await fs.writeFile(dest, Buffer.from(data.subarray(0, f.dataLen)));
   }
 
   async replaceFile(key: string, srcPath: string) {
@@ -383,7 +415,7 @@ export class PvfModel {
     if (!f) return { success: false };
     const buf = await fs.readFile(srcPath);
     f.writeFileData(new Uint8Array(buf));
-  f.changed = true;
+    f.changed = true;
     return { success: true };
   }
 
@@ -400,7 +432,7 @@ export class PvfModel {
     if (this.fileList.has(k)) return false;
     // default checksum and offsets; zero-length file
     const nameBytes = iconv.encode(k, 'cp949');
-    const pf = new PvfFile(0, nameBytes, 0, 0, 0);
+    const pf = new PvfFile(getFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
     this.fileList.set(k, pf);
@@ -417,7 +449,7 @@ export class PvfModel {
     // We'll create a hidden placeholder file named `${k}/.folder` so folder exists in listings
     const placeholderKey = `${k}/.folder`;
     const nameBytes = iconv.encode(placeholderKey, 'cp949');
-    const pf = new PvfFile(0, nameBytes, 0, 0, 0);
+    const pf = new PvfFile(getFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
     this.fileList.set(placeholderKey, pf);
@@ -440,21 +472,21 @@ export class PvfModel {
 
   private decompileScript(f: PvfFile): string {
     const data = f.data!;
-    const items: {t:number,v:number}[] = [];
+    const items: { t: number, v: number }[] = [];
     for (let i = 2; i < f.dataLen - 4; i += 5) {
       const t = data[i];
-      const v = (data[i+1] | (data[i+2]<<8) | (data[i+3]<<16) | (data[i+4]<<24)) >>> 0;
-      if (t >= 2 && t <= 10) items.push({t,v});
+      const v = (data[i + 1] | (data[i + 2] << 8) | (data[i + 3] << 16) | (data[i + 4] << 24)) >>> 0;
+      if (t >= 2 && t <= 10) items.push({ t, v });
     }
     const sb: string[] = [];
     sb.push('#PVF_File');
 
-    const getStr = (idx:number)=> this.strtable?.get(idx) ?? `#${idx}`;
-    const getStrLink = (id:number, nameIdx:number)=> this.strview?.get(id, getStr(nameIdx)) ?? '';
+    const getStr = (idx: number) => this.strtable?.get(idx) ?? `#${idx}`;
+    const getStrLink = (id: number, nameIdx: number) => this.strview?.get(id, getStr(nameIdx)) ?? '';
 
     let i = 0;
     while (i < items.length) {
-      const {t, v} = items[i];
+      const { t, v } = items[i];
       // Section tag (heuristic: type==5 or stringtable returns bracketed tag)
       if (t === 5 || (this.strtable && getStr(v).startsWith('['))) {
         sb.push('');
@@ -467,9 +499,9 @@ export class PvfModel {
           const nv = items[i].v;
           if (nt === 5 || (this.strtable && getStr(nv).startsWith('['))) break;
           // StringLinkIndex + StringLink pair
-          if (nt === 9 && i+1 < items.length && items[i+1].t === 10) {
-            const name = getStr(items[i+1].v);
-            const val = getStrLink(nv, items[i+1].v);
+          if (nt === 9 && i + 1 < items.length && items[i + 1].t === 10) {
+            const name = getStr(items[i + 1].v);
+            const val = getStrLink(nv, items[i + 1].v);
             sb.push(`\t\`${val || ''}\``);
             i += 2;
             continue;
@@ -498,9 +530,9 @@ export class PvfModel {
       // Fallbacks
       if (t === 7) {
         sb.push(`\t\`${getStr(v)}\``);
-      } else if (t === 9 && i+1 < items.length && items[i+1].t === 10) {
-        const name = getStr(items[i+1].v);
-        const val = getStrLink(v, items[i+1].v);
+      } else if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
+        const name = getStr(items[i + 1].v);
+        const val = getStrLink(v, items[i + 1].v);
         sb.push(`\t\`${val || ''}\``);
         i++;
       } else {
@@ -513,10 +545,10 @@ export class PvfModel {
     return sb.join('\n');
   }
 
-  private formatFloat(n:number): string {
+  private formatFloat(n: number): string {
     // mimic C# FormatFloat: trim trailing zeros
     const s = n.toFixed(6);
-    return s.replace(/\.0+$/,'').replace(/(\.\d*[1-9])0+$/, '$1');
+    return s.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
   }
 
   private async loadStringAssets(): Promise<void> {
@@ -531,7 +563,7 @@ export class PvfModel {
     if (nstr) {
       const bytes = await this.readAndDecrypt(nstr);
       this.strview = new StringView();
-  await this.strview.init(bytes.subarray(0, nstr.dataLen), this, 'cp950');
+      await this.strview.init(bytes.subarray(0, nstr.dataLen), this, 'cp950');
     }
   }
 
@@ -561,12 +593,12 @@ export class PvfModel {
   private isTextByExtension(lowerKey: string): boolean {
     // Extendable list; treat these as text files decoded via encodingForKey
     return lowerKey.endsWith('.skl')
-        || lowerKey.endsWith('.lst')
-        || lowerKey.endsWith('.txt')
-        || lowerKey.endsWith('.cfg')
-        || lowerKey.endsWith('.def')
-        || lowerKey.endsWith('.inc')
-        || lowerKey.endsWith('.xml');
+      || lowerKey.endsWith('.lst')
+      || lowerKey.endsWith('.txt')
+      || lowerKey.endsWith('.cfg')
+      || lowerKey.endsWith('.def')
+      || lowerKey.endsWith('.inc')
+      || lowerKey.endsWith('.xml');
   }
 
   private detectEncoding(key: string, bytes: Uint8Array): string {
@@ -605,7 +637,7 @@ export class PvfModel {
     const n = Math.min(text.length, 4096);
     if (n === 0) return false;
     let printable = 0;
-    for (let i=0;i<n;i++) {
+    for (let i = 0; i < n; i++) {
       const c = text.charCodeAt(i);
       // allow common whitespace and CJK, punctuation etc.
       if (c === 9 || c === 10 || c === 13 || (c >= 32 && c !== 127)) printable++;
@@ -626,14 +658,24 @@ export class PvfModel {
   private async ensureStringTableUpToDate(): Promise<void> {
     if (!this.strtable) return;
     if (!this.strtable.isUpdated) return;
-    const f = this.fileList.get('stringtable.bin');
-    if (!f) return;
+    // Ensure a stringtable.bin entry exists; if missing, create a new PvfFile for it
     const bin = this.strtable.createBinary();
-    f.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
-    f.changed = true;
-    // After rebuilding, we could refresh view data if needed
+    const existing = this.fileList.get('stringtable.bin');
+    if (existing) {
+      existing.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
+      existing.changed = true;
+    } else {
+      const nameBytes = iconv.encode('stringtable.bin', 'cp949');
+      const pf = new PvfFile(getFileNameHashCode(nameBytes), nameBytes, bin.length, 0, 0);
+      pf.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
+      pf.changed = true;
+      this.fileList.set('stringtable.bin', pf);
+    }
+    // Invalidate children cache so new file shows up in tree
+    this.childrenCache.clear();
+    this.rootChildren = null;
+    // After rebuilding, we could refresh StringView if indices changed; skipped for performance
     this.strtable.isUpdated = false;
-    // Optionally reload StringView if indices changed; skipped for performance
   }
 }
 
@@ -657,10 +699,10 @@ class PvfFile {
   get fileNameLen() { return this.fileNameBytes.length; }
   get fileName() {
     // pvfUtility uses codepage 0x3b5 (949, Korean) for file names
-    return iconv.decode(Buffer.from(this.fileNameBytes), 'cp949').replace(/\0+$/,'').replace(/\\/g,'/').toLowerCase();
+    return iconv.decode(Buffer.from(this.fileNameBytes), 'cp949').replace(/\0+$/, '').replace(/\\/g, '/').toLowerCase();
   }
   get blockLength() { return (this.dataLen + 3) & -4; }
-  get isScriptFile() { return this.data && this.data.length >= 2 && ((this.data[0] | (this.data[1]<<8)) === 0xd0b0); }
+  get isScriptFile() { return this.data && this.data.length >= 2 && ((this.data[0] | (this.data[1] << 8)) === 0xd0b0); }
 
   initFile(enc: Uint8Array) {
     this.data = PvfCrypto.decrypt(enc, this.blockLength, this.checksum);
@@ -689,21 +731,21 @@ class StringTable {
     const count = new DataView(stBytes.buffer, stBytes.byteOffset, stBytes.byteLength).getInt32(0, true);
     const dv = new DataView(stBytes.buffer, stBytes.byteOffset, stBytes.byteLength);
     this.list = new Array(count);
-    for (let i=0;i<count;i++) {
-      const off1 = dv.getInt32(4 + i*4, true);
-      const off2 = dv.getInt32(8 + i*4, true);
+    for (let i = 0; i < count; i++) {
+      const off1 = dv.getInt32(4 + i * 4, true);
+      const off2 = dv.getInt32(8 + i * 4, true);
       const len = off2 - off1;
       const start = off1 + 4; // per C# code
-      const slice = stBytes.subarray(start, start+len);
-      const s = iconv.decode(Buffer.from(slice), this.encoding).replace(/\0+$/,'');
+      const slice = stBytes.subarray(start, start + len);
+      const s = iconv.decode(Buffer.from(slice), this.encoding).replace(/\0+$/, '');
       this.list[i] = s;
     }
     this.isUpdated = false;
   }
-  get(idx: number): string { return (idx>=0 && idx<this.list.length) ? this.list[idx] : `#{${idx}}`; }
+  get(idx: number): string { return (idx >= 0 && idx < this.list.length) ? this.list[idx] : `#{${idx}}`; }
   getIndex(str: string): number { return this.list.indexOf(str); }
-  add(str: string): number { const i = this.list.indexOf(str); if (i>=0) return i; this.list.push(str); this.isUpdated = true; return this.list.length-1; }
-  dumpText(): string { return this.list.map((s,i)=> `${i}\t${s}`).join('\n'); }
+  add(str: string): number { const i = this.list.indexOf(str); if (i >= 0) return i; this.list.push(str); this.isUpdated = true; return this.list.length - 1; }
+  dumpText(): string { return this.list.map((s, i) => `${i}\t${s}`).join('\n'); }
   parseFromText(text: string) {
     // Accept lines in format: "index\tvalue"; if index missing, append sequentially
     const lines = text.split(/\r?\n/);
@@ -713,7 +755,7 @@ class StringTable {
       const tab = line.indexOf('\t');
       if (tab > -1) {
         const idxStr = line.slice(0, tab).trim();
-        const val = line.slice(tab+1);
+        const val = line.slice(tab + 1);
         const idx = /^\d+$/.test(idxStr) ? parseInt(idxStr, 10) : -1;
         if (idx >= 0) {
           // fill gaps with empty strings if needed
@@ -725,12 +767,12 @@ class StringTable {
       // fallback: plain line -> append
       list.push(line);
     }
-    this.list = list.map(s=> s ?? '');
+    this.list = list.map(s => s ?? '');
     this.isUpdated = true;
   }
   createBinary(): Buffer {
     // Follow pvfUtility layout: [count][offsets(count+1)][data...], offsets start counted from after the first 4 bytes
-    const enc = (s:string)=> iconv.encode(s, this.encoding);
+    const enc = (s: string) => iconv.encode(s, this.encoding);
     const dataParts = this.list.map(s => enc(s));
     let count = this.list.length;
     // compute total
@@ -742,7 +784,7 @@ class StringTable {
     out.writeUInt32LE(count >>> 0, p); p += 4;
     // offsets (relative to start+4)
     let off = headerSize - 4; // first data start index used by C# logic (counted from +4)
-    for (let i=0;i<count;i++) {
+    for (let i = 0; i < count; i++) {
       out.writeUInt32LE(off >>> 0, p); p += 4;
       off += dataParts[i].length;
     }
@@ -756,7 +798,7 @@ class StringTable {
 
 // --- Minimal Script Compiler (align with pvfUtility essentials) ---
 class ScriptCompiler {
-  constructor(private model: PvfModel) {}
+  constructor(private model: PvfModel) { }
   compile(scriptText: string): Buffer | null {
     try {
       // Preprocess: normalize Type10 patterns like <id::name`...`> -> <$1``>
@@ -775,7 +817,7 @@ class ScriptCompiler {
           for (const [t, v] of items) {
             out.push(t & 0xFF);
             // int32 LE
-            out.push(v & 0xFF, (v>>>8)&0xFF, (v>>>16)&0xFF, (v>>>24)&0xFF);
+            out.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF);
           }
         }
       }
@@ -787,8 +829,8 @@ class ScriptCompiler {
   private compileItem(item: string): Array<[number, number]> {
     const res: Array<[number, number]> = [];
     const st = this.model['strtable'] as any as StringTable | undefined;
-    const getIdx = (s:string)=> st ? (st.getIndex(s) >= 0 ? st.getIndex(s) : st.add(s)) : 0;
-    const trim = (s:string)=> s.trim();
+    const getIdx = (s: string) => st ? (st.getIndex(s) >= 0 ? st.getIndex(s) : st.add(s)) : 0;
+    const trim = (s: string) => s.trim();
     if (!item) return res;
     // Section [name]
     if (item.startsWith('[') && item.endsWith(']')) {
@@ -802,7 +844,7 @@ class ScriptCompiler {
       const idxDbl = inner.indexOf('::');
       if (idxDbl > 0) {
         const idStr = inner.slice(0, idxDbl);
-        const namePart = inner.slice(idxDbl+2);
+        const namePart = inner.slice(idxDbl + 2);
         const name = namePart.split('`')[0];
         const id = parseInt(trim(idStr), 10) >>> 0;
         res.push([9, id]);
@@ -823,7 +865,7 @@ class ScriptCompiler {
       const body = item.slice(1, -1);
       const eq = body.indexOf('=');
       const tStr = eq >= 0 ? body.slice(0, eq) : body;
-      const vStr = eq >= 0 ? body.slice(eq+1) : '';
+      const vStr = eq >= 0 ? body.slice(eq + 1) : '';
       const t = Math.max(0, Math.min(255, parseInt(trim(tStr), 10) | 0));
       if (t === 0) return res; // ignore
       if (vStr.startsWith('`') && vStr.endsWith('`')) {
@@ -835,12 +877,12 @@ class ScriptCompiler {
         if (vStr.indexOf('.') >= 0) {
           // float -> store as float bits
           const f = parseFloat(vStr);
-          const buf = Buffer.allocUnsafe(4); buf.writeFloatLE(isFinite(f)?f:0, 0);
+          const buf = Buffer.allocUnsafe(4); buf.writeFloatLE(isFinite(f) ? f : 0, 0);
           const val = buf.readUInt32LE(0);
           res.push([t, val >>> 0]);
         } else {
           const n = parseInt(vStr, 10) | 0;
-          res.push([t, n>>>0]);
+          res.push([t, n >>> 0]);
         }
       }
       return res;
@@ -848,44 +890,44 @@ class ScriptCompiler {
     // Numbers
     if (item.indexOf('.') >= 0) {
       const f = parseFloat(item);
-      const buf = Buffer.allocUnsafe(4); buf.writeFloatLE(isFinite(f)?f:0, 0);
+      const buf = Buffer.allocUnsafe(4); buf.writeFloatLE(isFinite(f) ? f : 0, 0);
       res.push([4, buf.readUInt32LE(0) >>> 0]);
       return res;
     }
     {
       const n = parseInt(item, 10);
-      if (!isNaN(n)) { res.push([2, (n|0)>>>0]); return res; }
+      if (!isNaN(n)) { res.push([2, (n | 0) >>> 0]); return res; }
     }
     // Fallback: ignore token
     return res;
   }
 }
 
-  class StringView {
+class StringView {
   // list of maps by codeIndex
-  private files: Array<Record<string,string> | undefined> = [];
+  private files: Array<Record<string, string> | undefined> = [];
   async init(nStringLstBytes: Uint8Array, model: PvfModel, encoding: string) {
     // n_string.lst structure: from 2, every 10 bytes: [type(1),data(4)] x2 where the second data is stringtable index of str file name
     const len = nStringLstBytes.length;
     const dv = new DataView(nStringLstBytes.buffer, nStringLstBytes.byteOffset, nStringLstBytes.byteLength);
-    const count = Math.floor((len - 2)/10);
+    const count = Math.floor((len - 2) / 10);
     this.files = new Array(count);
-    const get4 = (pos:number)=> dv.getInt32(pos, true);
-    for (let id=0, i=2; id<count; id++, i+=10) {
-  const nameIdx = get4(i+6);
-  const name = model.getStringFromTable(nameIdx) ?? '';
-  const file = name ? model.getFileByKey(name.toLowerCase()) : undefined;
+    const get4 = (pos: number) => dv.getInt32(pos, true);
+    for (let id = 0, i = 2; id < count; id++, i += 10) {
+      const nameIdx = get4(i + 6);
+      const name = model.getStringFromTable(nameIdx) ?? '';
+      const file = name ? model.getFileByKey(name.toLowerCase()) : undefined;
       if (file) {
         const data = await model.loadFileData(file);
         if (data && data.length >= file.dataLen) {
-          const text = iconv.decode(Buffer.from(data), encoding).replace(/\0+$/,'');
-          const map: Record<string,string> = {};
+          const text = iconv.decode(Buffer.from(data), encoding).replace(/\0+$/, '');
+          const map: Record<string, string> = {};
           for (const line of text.split(/\r?\n/)) {
-            if (!line || (line.length>2 && line[0]=='/' && line[1]=='/')) continue;
+            if (!line || (line.length > 2 && line[0] == '/' && line[1] == '/')) continue;
             const idx = line.indexOf('>');
-            if (idx>0) {
+            if (idx > 0) {
               const k = line.slice(0, idx).trim();
-              const v = line.slice(idx+1).trim();
+              const v = line.slice(idx + 1).trim();
               if (k) map[k] = v;
             }
           }
@@ -894,7 +936,7 @@ class ScriptCompiler {
       }
     }
   }
-  get(id:number, name:string): string {
+  get(id: number, name: string): string {
     const m = this.files[id];
     if (!m) return '';
     return m[name] ?? '';
