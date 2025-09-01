@@ -40,6 +40,18 @@
         "title": "打开 PVF 封包"
       },
       {
+        "command": "pvf.createFolder",
+        "title": "新建文件夹"
+      },
+      {
+        "command": "pvf.deleteFolder",
+        "title": "删除文件夹"
+      },
+      {
+        "command": "pvf.createFile",
+        "title": "新建文件"
+      },
+      {
         "command": "pvf.savePack",
         "title": "保存 PVF 封包"
       },
@@ -86,17 +98,32 @@
         {
           "command": "pvf.exportFile",
           "when": "view == pvfExplorerView && viewItem == pvf.file",
-          "group": "inline@1"
+          "group": "navigation@2"
         },
         {
           "command": "pvf.replaceFile",
           "when": "view == pvfExplorerView && viewItem == pvf.file",
-          "group": "inline@2"
+          "group": "navigation@3"
         },
         {
           "command": "pvf.deleteFile",
           "when": "view == pvfExplorerView && viewItem == pvf.file",
-          "group": "inline@3"
+          "group": "navigation@4"
+        },
+        {
+          "command": "pvf.createFolder",
+          "when": "view == pvfExplorerView && viewItem == pvf.folder",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pvf.createFile",
+          "when": "view == pvfExplorerView && viewItem == pvf.folder",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pvf.deleteFolder",
+          "when": "view == pvfExplorerView && viewItem == pvf.folder",
+          "group": "navigation@3"
         }
       ]
     }

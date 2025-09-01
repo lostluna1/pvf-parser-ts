@@ -389,6 +389,53 @@ export class PvfModel {
 
   deleteFile(key: string) {
     this.fileList.delete(key);
+    // invalidate caches
+    this.childrenCache.clear();
+    this.rootChildren = null;
+  }
+
+  // Create an empty file with zero bytes. Key should be normalized lower-case with '/'
+  createEmptyFile(key: string) {
+    const k = key.toLowerCase();
+    if (this.fileList.has(k)) return false;
+    // default checksum and offsets; zero-length file
+    const nameBytes = iconv.encode(k, 'cp949');
+    const pf = new PvfFile(0, nameBytes, 0, 0, 0);
+    pf.writeFileData(new Uint8Array(0));
+    pf.changed = true;
+    this.fileList.set(k, pf);
+    this.childrenCache.clear();
+    this.rootChildren = null;
+    return true;
+  }
+
+  // Create an empty folder represented logically by having files under its key; to create an empty folder, insert a placeholder zero-length entry with a trailing slash marker.
+  createFolder(key: string) {
+    const k = key.toLowerCase();
+    if (this.fileList.has(k)) return false;
+    // Represent folder by an entry with zero-length name and no data; keep as non-file by not marking as file in entries (we use presence of trailing entries to show folder)
+    // We'll create a hidden placeholder file named `${k}/.folder` so folder exists in listings
+    const placeholderKey = `${k}/.folder`;
+    const nameBytes = iconv.encode(placeholderKey, 'cp949');
+    const pf = new PvfFile(0, nameBytes, 0, 0, 0);
+    pf.writeFileData(new Uint8Array(0));
+    pf.changed = true;
+    this.fileList.set(placeholderKey, pf);
+    this.childrenCache.clear();
+    this.rootChildren = null;
+    return true;
+  }
+
+  deleteFolder(key: string) {
+    const prefix = key.endsWith('/') ? key : key + '/';
+    const keysToDelete: string[] = [];
+    for (const k of this.fileList.keys()) {
+      if (k === key || k.startsWith(prefix)) keysToDelete.push(k);
+    }
+    for (const k of keysToDelete) this.fileList.delete(k);
+    this.childrenCache.clear();
+    this.rootChildren = null;
+    return true;
   }
 
   private decompileScript(f: PvfFile): string {
@@ -712,7 +759,7 @@ class ScriptCompiler {
   constructor(private model: PvfModel) {}
   compile(scriptText: string): Buffer | null {
     try {
-      // Preprocess: normalize Type10 patterns like <id::name`...`> -> <id::name``>
+      // Preprocess: normalize Type10 patterns like <id::name`...`> -> <$1``>
       scriptText = scriptText.replace(/<(\d+::.+?)`.+?`>/g, '<$1``>');
       const out: number[] = [];
       // header 0xB0 0xD0

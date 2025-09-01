@@ -88,6 +88,33 @@ export function activate(context: vscode.ExtensionContext) {
             tree.refresh();
         }),
 
+        vscode.commands.registerCommand('pvf.createFolder', async (node: PvfFileEntry) => {
+            // node is folder
+            const base = node && !node.isFile ? node.key : '';
+            const name = await vscode.window.showInputBox({ prompt: '输入新文件夹名称', placeHolder: '例如: new_folder' });
+            if (!name) return;
+            model.createFolder(base ? `${base}/${name}` : name);
+            tree.refresh();
+        }),
+
+        vscode.commands.registerCommand('pvf.deleteFolder', async (node: PvfFileEntry) => {
+            if (!node || node.isFile) return;
+            const ok = await vscode.window.showWarningMessage(`确定删除文件夹 ${node.name} 及其所有子项吗？`, { modal: true }, '删除');
+            if (ok !== '删除') return;
+            model.deleteFolder(node.key);
+            tree.refresh();
+        }),
+
+        vscode.commands.registerCommand('pvf.createFile', async (node: PvfFileEntry) => {
+            const base = node && !node.isFile ? node.key : '';
+            const name = await vscode.window.showInputBox({ prompt: '输入新文件名（含扩展名）', placeHolder: '例如: readme.txt' });
+            if (!name) return;
+            const key = base ? `${base}/${name}` : name;
+            // create empty file
+            model.createEmptyFile(key);
+            tree.refresh();
+        }),
+
                 // Provide editable virtual FS for pvf: scheme
                     vscode.workspace.registerFileSystemProvider('pvf', new (class implements vscode.FileSystemProvider {
                     private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
