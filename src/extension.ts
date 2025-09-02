@@ -4,6 +4,9 @@ import { PvfProvider } from './pvf/provider';
 import { registerPathLinkProvider } from './pvf/pathLinkProvider';
 import { registerPvfDecorations } from './pvf/decorations';
 import { registerAllCommands } from './commander/index.js';
+import * as indexer from './npk/indexer';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
@@ -17,6 +20,71 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register all commands from commander modules
     registerAllCommands(context, { model, tree, deco: deco as any, output });
+
+    indexer.loadIndexFromDisk(context).then((m) => {
+        // determine whether to build index on activate
+        const cfg = vscode.workspace.getConfiguration();
+        const root = (cfg.get<string>('pvf.npkRoot') || '').trim();
+        // 默认在激活时自动重建索引，若不希望这样可在设置中将 pvf.autoReindexOnActivate 设为 false
+        const autoReindex = cfg.get<boolean>('pvf.autoReindexOnActivate', true);
+        const needBuild = !!root && (autoReindex || !m || (m instanceof Map && m.size === 0));
+        if (needBuild && root) {
+            void vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在构建 NPK 索引…' }, async (p) => {
+                let lastReport = 0;
+                const map = await indexer.buildIndex(context, [root], (done, total, file) => {
+                    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                    // throttle updates
+                    if (pct !== lastReport) {
+                        const delta = pct - lastReport;
+                        lastReport = pct;
+                        p.report({ increment: delta, message: `${done}/${total} ${file ? file.split(/[\\/]/).pop() : ''}` });
+                    }
+                });
+                return map;
+            });
+        }
+    });
+
+    // register command to rebuild index explicitly
+    context.subscriptions.push(vscode.commands.registerCommand('pvf.rebuildNpkIndex', async () => {
+        const cfg = vscode.workspace.getConfiguration();
+        const root = (cfg.get<string>('pvf.npkRoot') || '').trim();
+        if (!root) {
+            vscode.window.showWarningMessage('请先在设置 pvf.npkRoot 指定 ImagePacks 根目录');
+            return;
+        }
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '正在重建 NPK 索引…' }, async (p) => {
+            let lastReport = 0;
+            const m = await indexer.buildIndex(context, [root], (done, total, file) => {
+                const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                if (pct !== lastReport) {
+                    const delta = pct - lastReport;
+                    lastReport = pct;
+                    p.report({ increment: delta, message: `${done}/${total} ${file ? file.split(/[\\/]/).pop() : ''}` });
+                }
+            });
+            p.report({ increment: 100, message: `已索引 ${m.size} 项` });
+        });
+        vscode.window.showInformationMessage('NPK 索引已重建');
+    }));
+
+    // diagnostic command: show index status and storage path
+    context.subscriptions.push(vscode.commands.registerCommand('pvf.showNpkIndexStatus', async () => {
+        const storagePath = context.globalStorageUri.fsPath;
+        const indexFile = path.join(storagePath, 'npk-index.json');
+        let exists = false;
+        try { await fs.stat(indexFile); exists = true; } catch { exists = false; }
+        let idx = indexer.getIndex();
+        if (!idx) {
+            try { idx = await indexer.loadIndexFromDisk(context); } catch { idx = null; }
+        }
+        const entries = idx ? idx.size : 0;
+        const msg = `globalStorage: ${storagePath}\nindex file: ${indexFile}\nfile exists: ${exists}\nin-memory entries: ${entries}`;
+        vscode.window.showInformationMessage('已在输出面板写入索引信息');
+        const out = vscode.window.createOutputChannel('PVF');
+        out.show(true);
+        out.appendLine(msg);
+    }));
 
     context.subscriptions.push(
         // Provide editable virtual FS for pvf: scheme
@@ -47,4 +115,4 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() { }
- 
+

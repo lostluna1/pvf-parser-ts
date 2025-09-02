@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Deps } from './types';
 import { getSpriteRgba } from '../npk/imgReader.js';
+import * as indexer from '../npk/indexer';
 
 export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps) {
   context.subscriptions.push(
@@ -16,11 +17,27 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
         vscode.window.showInformationMessage(`已设置 NPK 根目录: ${root}`);
       }
       const fs = await import('fs/promises'); const path = await import('path');
+      // ensure index is loaded from disk before attempting to use it
+      try { await indexer.loadIndexFromDisk(context); } catch { }
+      const out = vscode.window.createOutputChannel('PVF');
       const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').toLowerCase();
       const cache = new Map<string, any>();
       async function loadAlbumFor(imgLogical: string): Promise<any | undefined> {
         let logical = imgLogical.replace(/\\/g, '/').replace(/^\//, '').toLowerCase(); if (!logical.startsWith('sprite/')) logical = 'sprite/' + logical; const normalizedKey = norm(logical);
         if (cache.has(normalizedKey)) return cache.get(normalizedKey);
+        // try index first
+        try {
+          const rec = await indexer.findNpkFor(normalizedKey);
+          if (rec) {
+            const { readNpkFromBuffer, readFileBuffer } = await import('../npk/npkReader.js');
+            try {
+              const buf = await readFileBuffer(rec.npk);
+              const list = await readNpkFromBuffer(buf, rec.npk);
+              const found = list.find(a => norm(a.path || '') === normalizedKey) || list.find(a => norm(a.path || '').endsWith('/' + normalizedKey.split('/').slice(-1).join('/')));
+              if (found) { cache.set(normalizedKey, found); try { out.appendLine(`[Index HIT] ${normalizedKey} -> ${rec.npk}`); } catch{}; return found; }
+            } catch (e) { try { out.appendLine(`[Index ERR] ${normalizedKey} -> ${String(e)}`); } catch{}; }
+          }
+        } catch (e) { try { out.appendLine(`[Index ERR] ${normalizedKey} -> ${String(e)}`); } catch{}; }
         const { readNpkEntries, readNpkFromBuffer, readFileBuffer } = await import('../npk/npkReader.js');
         const scanDirs = [root, path.join(root, 'ImagePacks2')]; let foundAnyNpk = false;
         const wantParts = normalizedKey.split('/'); const tail1 = wantParts.slice(-1).join('/'); const tail2 = wantParts.slice(-2).join('/');
@@ -56,7 +73,14 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
         let idx = 0; const after = block.slice(imgPathM.index + imgPathM[0].length); const idxM = /\s*\r?\n\s*(\d+)/.exec(after); if (idxM) idx = parseInt(idxM[1], 10) || 0;
         const delayM = /\[DELAY\]\s*\r?\n\s*(\d+)/i.exec(block); const delay = delayM ? parseInt(delayM[1], 10) : 50;
   const posM = /\[IMAGE POS\]\s*\r?\n\s*(-?\d+)\s+(-?\d+)/i.exec(block); const pos = posM ? { x: parseInt(posM[1], 10), y: parseInt(posM[2], 10) } : undefined;
-  const geM = /\[GRAPHIC\s+EFFECT\]\s*\r?\n\s*([^\r\n]+)/i.exec(block); const gfx = geM ? String(geM[1]).trim().toUpperCase() : undefined;
+  const geM = /\[GRAPHIC\s+EFFECT\]\s*\r?\n\s*([^\r\n]+)/i.exec(block);
+  let gfx: string | undefined = undefined;
+  if (geM) {
+    gfx = String(geM[1]).trim();
+    // strip surrounding quotes/backticks if present
+    if (/^["'`].*["'`]$/.test(gfx)) gfx = gfx.slice(1, -1);
+    gfx = gfx.toUpperCase();
+  }
   if (!groups.has(img)) groups.set(img, { img, frames: [] }); groups.get(img)!.frames.push({ idx, delay, pos, gfx });
       }
       if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
@@ -71,7 +95,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
   const timeline: { rgba: string, w: number, h: number, delay: number, dx: number, dy: number, fid: number, gfx?: string }[] = [];
       for (const [img, g] of groups) {
         const al = albumMap.get(img); if (!al) continue;
-  for (const f of g.frames) { const rgba = getSpriteRgba(al, f.idx); if (!rgba) continue; const b64 = Buffer.from(rgba).toString('base64'); const sp = al.sprites[f.idx]; timeline.push({ rgba: b64, w: sp.width, h: sp.height, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx }); }
+  for (const f of g.frames) { const rgba = getSpriteRgba(al, f.idx); if (!rgba) continue; const b64 = Buffer.from(rgba).toString('base64'); const sp = al.sprites[f.idx]; timeline.push({ rgba: b64, w: sp.width, h: sp.height, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx ? (typeof f.gfx === 'string' ? f.gfx.replace(/^['"`]|['"`]$/g,'').toUpperCase() : String(f.gfx).toUpperCase()) : undefined }); }
       }
       if (timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
 
@@ -89,7 +113,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
       panel.webview.html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"/>
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}';" />
         <style>
-          :root{--bg:var(--vscode-editor-background);--fg:var(--vscode-foreground);--panel:var(--vscode-editorWidget-background);--border:var(--vscode-panel-border);--muted:var(--vscode-descriptionForeground);--accent:var(--vscode-button-background);--accent-fg:var(--vscode-button-foreground);} 
+          :root{--bg:var(--vscode-editor-background);--fg:var(--vscode-foreground);--panel:var(--vscode-editorWidget-background);--border:var(--vscode-panel-border);--muted:var(--vscode-descriptionForeground);--accent:var(--vscode-button-background);--accent-fg:var(--vscode-button-foreground);}
           body{margin:0;padding:10px;font-family:Segoe UI,Arial,"Microsoft YaHei",sans-serif;color:var(--fg);background:var(--bg)}
           #c{image-rendering:pixelated;outline:none;border:1px solid var(--border);border-radius:8px;display:block;max-width:100%}
           .toolbar{margin:6px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);padding:8px 10px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -180,6 +204,22 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                function drawFrame(){
                  const f=timeline[idx];
                  const imgData=new ImageData(b64ToU8(f.rgba),f.w,f.h);
+                 // apply client-side graphic effects for this frame
+                 try {
+                   if (f.gfx === 'LINEARDODGE') {
+                     const d = imgData.data;
+                     for (let i = 0; i < d.length; i += 4) {
+                       const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+                       const max = Math.max(r, g, b);
+                       const sub = 255 - max;
+                       const na = Math.min(a, max);
+                       d[i+3] = na;
+                       d[i] = Math.min(255, r + sub);
+                       d[i+1] = Math.min(255, g + sub);
+                       d[i+2] = Math.min(255, b + sub);
+                     }
+                   }
+                 } catch (e) { /* ignore effect failures */ }
                  // prepare offscreen
                  if(buf.width!==f.w||buf.height!==f.h){ buf.width=f.w; buf.height=f.h; }
                  bctx.clearRect(0,0,buf.width,buf.height);
@@ -208,8 +248,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                  const cx=(canvas.width>>1)+f.dx;const cy=(canvas.height>>1)+f.dy;
                  const offx=Math.floor(cx-f.w/2);const offy=Math.floor(cy-f.h/2);
                  // set composite mode if needed
-                 const linearDodge = (f.gfx||'') === 'LINEARDODGE';
-                 ctx.globalCompositeOperation = linearDodge ? 'lighter' : 'source-over';
+                 ctx.globalCompositeOperation = 'source-over';
                  ctx.drawImage(buf, offx, offy);
                  lblFrame.textContent=String(idx+1);
                  lblFrameId.textContent=String(f.fid??idx);
