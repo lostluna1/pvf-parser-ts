@@ -127,6 +127,8 @@ export async function saveImpl(this: any, filePath: string, progress?: any) {
 
   ending.copy(out, p); p += ending.length;
   await fs.writeFile(filePath, out);
+  // 保存完成后，标记为已清理（不再显示“已修改”装饰）
+  for (const f of files) { f.changed = false; }
   return true;
 }
 

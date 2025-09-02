@@ -19,11 +19,10 @@ export class PvfProvider implements vscode.TreeDataProvider<PvfFileEntry> {
     const item = new vscode.TreeItem(element.name,
       element.isFile ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
     item.contextValue = element.isFile ? 'pvf.file' : 'pvf.folder';
-    if (element.isFile) {
-      const uri = vscode.Uri.parse(`pvf:/${element.key}`);
-      item.resourceUri = uri;
-      item.command = { command: 'pvf.openFile', title: '打开', arguments: [element] };
-    }
+  const uri = vscode.Uri.parse(`pvf:/${element.key}`);
+  // 为文件和文件夹都设置 resourceUri，便于文件装饰向父级传播
+  item.resourceUri = uri;
+  if (element.isFile) item.command = { command: 'pvf.openFile', title: '打开', arguments: [element] };
     return item;
   }
 

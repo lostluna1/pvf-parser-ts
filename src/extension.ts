@@ -2,11 +2,13 @@ import * as vscode from 'vscode';
 import { PvfModel, PvfFileEntry } from './pvf/model';
 import { PvfProvider } from './pvf/provider';
 import { registerListLinkProvider } from './pvf/listLinkProvider';
+import { registerPvfDecorations } from './pvf/decorations';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
     const output = vscode.window.createOutputChannel('PVF');
     const tree = new PvfProvider(model, output);
+    const deco = registerPvfDecorations(context, model);
 
     vscode.window.registerTreeDataProvider('pvfExplorerView', tree);
     // register document link provider for .lst files
@@ -18,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
             context.workspaceState.update('pvf.clipboard', payload);
         }),
         vscode.commands.registerCommand('pvf._getClipboard', async () => {
+            deco.refreshAll();
             return context.workspaceState.get('pvf.clipboard');
         }),
 
@@ -139,6 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
                 output.appendLine(`[PVF] open done in ${ms}ms (parsed header+tree only)`);
             });
             tree.refresh();
+            deco.refreshAll();
         }),
 
         vscode.commands.registerCommand('pvf.savePack', async () => {
@@ -160,6 +164,7 @@ export function activate(context: vscode.ExtensionContext) {
                             await model.open(dest.fsPath, (n: number) => { pp.report({ increment: 0, message: `${n}%` }); });
                         });
                         tree.refresh();
+                        deco.refreshAll();
                     } catch (e) {
                         // ignore reopen failures but notify
                         vscode.window.showWarningMessage('保存成功，但重新加载封包失败');
@@ -189,6 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
                             await model.open(model.pvfPath, (n: number) => { pp.report({ increment: 0, message: `${n}%` }); });
                         });
                         tree.refresh();
+                        deco.refreshAll();
                     } catch {
                         vscode.window.showWarningMessage('保存成功，但重新加载封包失败');
                     }
@@ -215,12 +221,14 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage('替换失败');
             }
             tree.refresh();
+            deco.refreshUris([vscode.Uri.parse(`pvf:/${node.key}`)]);
         }),
 
         vscode.commands.registerCommand('pvf.deleteFile', async (node: PvfFileEntry) => {
             if (!node || !node.isFile) return;
             model.deleteFile(node.key);
             tree.refresh();
+            deco.refreshAll();
         }),
 
         vscode.commands.registerCommand('pvf.createFolder', async (node: PvfFileEntry) => {
@@ -230,6 +238,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (!name) return;
             model.createFolder(base ? `${base}/${name}` : name);
             tree.refresh();
+            deco.refreshAll();
         }),
 
         vscode.commands.registerCommand('pvf.deleteFolder', async (node: PvfFileEntry) => {
@@ -238,6 +247,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (ok !== '删除') return;
             model.deleteFolder(node.key);
             tree.refresh();
+            deco.refreshAll();
         }),
 
         vscode.commands.registerCommand('pvf.createFile', async (node: PvfFileEntry) => {
@@ -248,10 +258,11 @@ export function activate(context: vscode.ExtensionContext) {
             // create empty file
             model.createEmptyFile(key);
             tree.refresh();
+            deco.refreshUris([vscode.Uri.parse(`pvf:/${key}`)]);
         }),
 
         // Provide editable virtual FS for pvf: scheme
-        vscode.workspace.registerFileSystemProvider('pvf', new (class implements vscode.FileSystemProvider {
+    vscode.workspace.registerFileSystemProvider('pvf', new (class implements vscode.FileSystemProvider {
             private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
             onDidChangeFile = this._emitter.event;
             watch(): vscode.Disposable { return new vscode.Disposable(() => { }); }
@@ -269,6 +280,7 @@ export function activate(context: vscode.ExtensionContext) {
                 const key = uri.path.replace(/^\//, '');
                 model.updateFileData(key, content);
                 this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+        deco.refreshUris([uri]);
             }
             delete(): void { /* implement if needed */ }
             rename(): void { /* implement if needed */ }
