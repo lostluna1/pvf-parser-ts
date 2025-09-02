@@ -21,6 +21,22 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
     const nonce = (() => { let t=''; const s='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for(let i=0;i<32;i++){ t += s.charAt(Math.floor(Math.random()*s.length)); } return t; })();
     const toolkitUri = vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'webview-ui-toolkit', 'dist', 'toolkit.js');
     const toolkitSrc = panel.webview.asWebviewUri(toolkitUri).toString();
+    // Precompute frame header positions for cursor sync
+    let framePos = new Map<number, vscode.Position>();
+    function computeFramePositions() {
+      framePos = new Map();
+      const t = doc.getText();
+      const re = /^\s*\[FRAME(\d{3})\]/gmi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(t)) !== null) {
+        const lineStart = m.index;
+        const bracketAt = t.indexOf('[', lineStart);
+        const offset = bracketAt >= 0 ? bracketAt : lineStart;
+        const idx = parseInt(m[1], 10);
+        if (!Number.isNaN(idx)) framePos.set(idx, doc.positionAt(offset));
+      }
+    }
+    computeFramePositions();
 
     // Parse frames & their inner tags/values
   const frameBlockRegex = /^\s*\[FRAME(\d{3})\]([\s\S]*?)(?=^\s*\[FRAME\d{3}\]|(?![\s\S]))/gim;
@@ -112,6 +128,20 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
         case 'add-frame':
           // handled directly in webview in this iteration
           break;
+        case 'focus-frame': {
+          try {
+            const idx = typeof msg.idx === 'number' ? msg.idx : NaN;
+            if (!Number.isNaN(idx)) {
+              const pos = framePos.get(idx);
+              if (pos) {
+                const visible = vscode.window.visibleTextEditors.find(e => e.document.uri.toString() === doc.uri.toString());
+                const viewColumn = visible?.viewColumn ?? vscode.ViewColumn.One;
+                await vscode.window.showTextDocument(doc, { viewColumn, preserveFocus: true, selection: new vscode.Range(pos, pos) });
+              }
+            }
+          } catch {}
+          break;
+        }
         case 'save': {
           try {
             const frames = Array.isArray(msg.frames) ? msg.frames : [];
@@ -122,6 +152,8 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
             const ok = await vscode.workspace.applyEdit(edit);
             if (ok) { vscode.window.showInformationMessage('ANI 已保存'); }
             else { vscode.window.showWarningMessage('保存失败'); }
+            // Recompute frame header positions after save
+            computeFramePositions();
           } catch (e: any) {
             vscode.window.showErrorMessage('保存出错: ' + String(e?.message||e));
           }
@@ -129,6 +161,14 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
         }
       }
     });
+
+    // Update positions if the source document changes while editor is open
+    const changeSub = vscode.workspace.onDidChangeTextDocument(e => {
+      if (e.document.uri.toString() === doc.uri.toString()) {
+        computeFramePositions();
+      }
+    });
+    panel.onDidDispose(() => changeSub.dispose());
   });
   context.subscriptions.push(d);
 }

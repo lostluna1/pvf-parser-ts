@@ -92,7 +92,7 @@
       return wrap;
     }
 
-    function render(keepOpenForIdx){
+  function render(keepOpenForIdx){
       const root=document.getElementById('frames'); if(!root) return;
       // collect previously open frames by data-idx
       const prevOpen = new Set();
@@ -114,6 +114,7 @@
       frames.forEach((f,idx)=>{
         const det=document.createElement('details'); det.className='frame'; det.setAttribute('data-idx', String(idx));
         det.open = prevOpen.size > 0 ? prevOpen.has(idx) : (idx === 0);
+        det.addEventListener('toggle', ()=>{ if(det.open){ try{ vscodeApi.postMessage({ type:'focus-frame', idx }); }catch(_){} } });
         const sum=document.createElement('summary'); sum.textContent='帧 ' + idx + ' (FRAME' + String(idx).padStart(3,'0') + ')';
         const body=document.createElement('div'); body.className='body';
 
@@ -157,6 +158,8 @@
 
           dd.select.addEventListener('change',()=>{ ent.tag = dd.select.value; render(idx); });
           box.appendChild(head); box.appendChild(valueControl);
+          // Focus within control also hints current frame
+          box.addEventListener('focusin',()=>{ try{ vscodeApi.postMessage({ type:'focus-frame', idx }); }catch(_){} });
           body.appendChild(box);
         });
 
