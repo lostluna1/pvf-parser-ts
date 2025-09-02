@@ -73,6 +73,9 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
   .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   .frame{border:1px solid var(--vscode-panel-border);border-radius:8px;margin-bottom:8px;overflow:hidden}
   .frame summary{cursor:pointer;list-style:none;padding:8px 12px;background:var(--vscode-editorWidget-background);}
+  .frame summary{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .frame summary .title{font-weight:600}
+  .frame summary .actions{display:flex;align-items:center;gap:6px}
   .frame summary::-webkit-details-marker{display:none}
   .frame .body{padding:10px 12px;display:flex;flex-direction:column;gap:10px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -82,13 +85,24 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
   textarea.value{width:100%;min-height:42px;resize:vertical;padding:6px 8px;border-radius:6px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editorWidget-background);color:var(--vscode-foreground)}
   .entry{border:1px dashed var(--vscode-panel-border);border-radius:6px;padding:8px}
   .entry .head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  /* Better visual treatment for tag dropdown */
+  .tag-select{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+  .tag-badge{background:var(--vscode-badge-background);color:var(--vscode-badge-foreground);padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.2px}
+  select.combo.tag{min-width:240px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);}
+  select.combo.tag:focus{outline:1px solid var(--vscode-focusBorder)}
+  /* Inputs get a bit more separation */
+  .entry .value, .entry .search, .entry .combo{margin-top:4px}
+  /* Bulk add inline bar */
+  #bulkAddBar{display:none;align-items:center;gap:8px;margin:6px 0}
+  #bulkAddBar.show{display:flex}
 </style>
 </head><body>
 <script type="module" src="${toolkitSrc}" nonce="${nonce}"></script>
 <div class="toolbar">
   <vscode-button id="btnSave" appearance="primary">保存到文档</vscode-button>
   <vscode-button id="btnAddFrame">新增帧</vscode-button>
-  <span style="margin-left:8px;opacity:.8">共 ${framesDetailed.length} 帧</span>
+  <vscode-button id="btnAddMany">批量添加帧</vscode-button>
+  <span id="frameCount" style="margin-left:8px;opacity:.8">共 ${framesDetailed.length} 帧</span>
 </div>
 <div id="frames"></div>
 <script type="application/json" id="ani-data" nonce="${nonce}">${safeData}</script>
