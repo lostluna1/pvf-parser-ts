@@ -16,6 +16,16 @@
   "icon": "media/icons8-源代码-48.png",
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "PVF Pack Explorer",
+      "properties": {
+        "pvf.npkRoot": {
+          "type": "string",
+          "default": "",
+          "description": "NPK 文件根目录（通常为游戏目录下的 ImagePacks2）。"
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -33,11 +43,19 @@
           "icon": "codicon:archive"
         }
       ]
-    },
-    "commands": [
+  },
+  "commands": [
       {
         "command": "pvf.openNpk",
         "title": "打开 NPK/IMG 并解析"
+      },
+      {
+        "command": "pvf.setNpkRoot",
+        "title": "设置 NPK 根目录"
+      },
+      {
+        "command": "pvf.previewAni",
+    "title": "预览 ANI"
       },
       {
         "command": "pvf.openPack",
@@ -126,6 +144,27 @@
           "group": "navigation@3"
         }
       ],
+      "editor/context": [
+        {
+          "command": "pvf.previewAni",
+          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "group": "navigation@9"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "pvf.previewAni",
+          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "group": "navigation@99"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "pvf.previewAni",
+          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "group": "navigation@9"
+        }
+      ],
       "view/item/context": [
         {
           "command": "pvf.exportFile",
@@ -206,6 +245,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "iconv-lite": "^0.6.3"
+  "iconv-lite": "^0.6.3",
+  "@vscode/webview-ui-toolkit": "^1.4.0"
   }
 }
