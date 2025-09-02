@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { PvfModel } from './model';
 
-export function registerListLinkProvider(context: vscode.ExtensionContext, model: PvfModel) {
+export function registerPathLinkProvider(context: vscode.ExtensionContext, model: PvfModel) {
   const provider: vscode.DocumentLinkProvider = {
     provideDocumentLinks(document: vscode.TextDocument, _token: vscode.CancellationToken) {
       if (document.uri.scheme !== 'pvf') return [];
@@ -116,6 +116,36 @@ export function registerListLinkProvider(context: vscode.ExtensionContext, model
               i++; // skip next line
             }
           }
+        }
+        return links;
+      }
+
+      // For .nut files: scan for quoted string literals that look like file paths and create fuzzy search links
+      if (docPath.endsWith('.nut')) {
+        const baseDir = docPath.includes('/') ? docPath.substring(0, docPath.lastIndexOf('/')) : '';
+        const dq = /"([^"\\]|\\.)*"/g; // double-quoted strings with escapes
+        const sq = /'([^'\\]|\\.)*'/g;  // single-quoted strings with escapes
+        for (let i = 0; i < lines; i++) {
+          const line = document.lineAt(i).text;
+          const processMatches = (re: RegExp) => {
+            re.lastIndex = 0;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(line)) !== null) {
+              const full = m[0];
+              const inner = full.substring(1, full.length - 1);
+              const low = inner.toLowerCase();
+              if (low.endsWith('.img')) continue; // skip images
+              if (!isLikelyPath(low)) continue;   // must look like a path
+              const args = JSON.stringify([inner, baseDir]);
+              const target = vscode.Uri.parse(`command:pvf.openFuzzyPath?${args}`);
+              // link range excludes quotes
+              const start = m.index + 1;
+              const end = start + inner.length;
+              links.push(new vscode.DocumentLink(new vscode.Range(new vscode.Position(i, start), new vscode.Position(i, end)), target));
+            }
+          };
+          processMatches(dq);
+          processMatches(sq);
         }
         return links;
       }

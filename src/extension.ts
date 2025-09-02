@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { PvfModel, PvfFileEntry } from './pvf/model';
 import { PvfProvider } from './pvf/provider';
-import { registerListLinkProvider } from './pvf/listLinkProvider';
+import { registerPathLinkProvider } from './pvf/pathLinkProvider';
 import { registerPvfDecorations } from './pvf/decorations';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -11,8 +11,8 @@ export function activate(context: vscode.ExtensionContext) {
     const deco = registerPvfDecorations(context, model);
 
     vscode.window.registerTreeDataProvider('pvfExplorerView', tree);
-    // register document link provider for .lst files
-    registerListLinkProvider(context, model);
+    // register document link provider for .lst/.nut and other path-like tokens
+    registerPathLinkProvider(context, model);
 
     context.subscriptions.push(
         // clipboard/compare storage
