@@ -46,6 +46,10 @@
   },
   "commands": [
       {
+        "command": "pvf.openAniEditor",
+        "title": "ANI 编辑器"
+      },
+      {
         "command": "pvf.openNpk",
         "title": "打开 NPK/IMG 并解析"
       },
@@ -156,11 +160,21 @@
           "command": "pvf.previewAni",
           "when": "resourceExtname == .ani || resourceExtname == .ANI",
           "group": "navigation@99"
+        },
+        {
+          "command": "pvf.openAniEditor",
+          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "group": "navigation@98"
         }
       ],
       "explorer/context": [
         {
           "command": "pvf.previewAni",
+          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "group": "navigation@9"
+        },
+        {
+          "command": "pvf.openAniEditor",
           "when": "resourceExtname == .ani || resourceExtname == .ANI",
           "group": "navigation@9"
         }
