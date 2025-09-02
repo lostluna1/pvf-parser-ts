@@ -36,6 +36,10 @@
     },
     "commands": [
       {
+        "command": "pvf.openNpk",
+        "title": "打开 NPK/IMG 并解析"
+      },
+      {
         "command": "pvf.openPack",
         "title": "打开 PVF 封包"
       },
