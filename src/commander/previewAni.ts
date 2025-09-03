@@ -100,7 +100,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
       return undefined;
     }
 
-  const groups = new Map<string, { img: string, frames: { idx: number, delay: number, pos?: { x: number, y: number }, gfx?: string, scale?: { x: number, y: number }, rotate?: number, tint?: [number, number, number, number] }[] }>();
+  const groups = new Map<string, { img: string, frames: { idx: number, delay: number, pos?: { x: number, y: number }, gfx?: string, scale?: { x: number, y: number }, rotate?: number, tint?: [number, number, number, number], atk?: { x:number,y:number,z:number,w:number,h:number,d:number }[], dmg?: { x:number,y:number,z:number,w:number,h:number,d:number }[] }[] }>();
     const blockRegex = /\[FRAME(\d{3})\]([\s\S]*?)(?=\n\[FRAME|$)/gi; let bm: RegExpExecArray | null;
     while ((bm = blockRegex.exec(text)) !== null) {
       const block = bm[2] || '';
@@ -113,6 +113,12 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
   const rateM = /\[IMAGE\s+RATE\]\s*\r?\n\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i.exec(block);
   const rotM = /\[IMAGE\s+ROTATE\]\s*\r?\n\s*(-?\d+(?:\.\d+)?)/i.exec(block);
   const rgbaM = /\[RGBA\]\s*\r?\n\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/i.exec(block);
+  // multiple boxes
+  const atkBoxes: { x:number,y:number,z:number,w:number,h:number,d:number }[] = [];
+  const dmgBoxes: { x:number,y:number,z:number,w:number,h:number,d:number }[] = [];
+  const boxScan = (re: RegExp, into: typeof atkBoxes) => { let m: RegExpExecArray | null; const rex = new RegExp(re.source, re.flags + (re.flags.includes('g') ? '' : 'g')); while ((m = rex.exec(block)) !== null) { const x=parseInt(m[1],10)|0, y=parseInt(m[2],10)|0, z=parseInt(m[3],10)|0, w=parseInt(m[4],10)|0, h=parseInt(m[5],10)|0, d=parseInt(m[6],10)|0; into.push({x,y,z,w,h,d}); } };
+  boxScan(/\[ATTACK\s+BOX\][^\r\n]*\r?\n\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)/i, atkBoxes);
+  boxScan(/\[DAMAGE\s+BOX\][^\r\n]*\r?\n\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)/i, dmgBoxes);
       let gfx: string | undefined = undefined;
       if (geM) {
         gfx = String(geM[1]).trim();
@@ -130,7 +136,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
         const a = Math.max(0, Math.min(255, parseInt(rgbaM[4], 10) || 0));
         tint = [r, g, b, a];
       }
-      if (!groups.has(img)) groups.set(img, { img, frames: [] }); groups.get(img)!.frames.push({ idx, delay, pos, gfx, scale, rotate, tint });
+  if (!groups.has(img)) groups.set(img, { img, frames: [] }); groups.get(img)!.frames.push({ idx, delay, pos, gfx, scale, rotate, tint, atk: atkBoxes, dmg: dmgBoxes });
     }
     if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
 
@@ -141,10 +147,10 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
     });
     if (albumMap.size === 0) { const missing = Array.from(groups.keys()).slice(0, 5).join(', '); vscode.window.showWarningMessage('未找到任何 IMG 资源。缺失示例: ' + missing); return; }
 
-  const timeline: { rgba: string, w: number, h: number, delay: number, dx: number, dy: number, fid: number, gfx?: string, sx?: number, sy?: number, rot?: number, tint?: [number, number, number, number] }[] = [];
+  const timeline: { rgba: string, w: number, h: number, delay: number, dx: number, dy: number, fid: number, gfx?: string, sx?: number, sy?: number, rot?: number, tint?: [number, number, number, number], atk?: {x:number,y:number,z:number,w:number,h:number,d:number}[], dmg?: {x:number,y:number,z:number,w:number,h:number,d:number}[] }[] = [];
     for (const [img, g] of groups) {
       const al = albumMap.get(img); if (!al) continue;
-  for (const f of g.frames) { const rgba = getSpriteRgba(al, f.idx); if (!rgba) continue; const b64 = Buffer.from(rgba).toString('base64'); const sp = al.sprites[f.idx]; timeline.push({ rgba: b64, w: sp.width, h: sp.height, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx ? (typeof f.gfx === 'string' ? f.gfx.replace(/^[\'"`]|[\'"`]$/g, '').toUpperCase() : String(f.gfx).toUpperCase()) : undefined, sx: f.scale?.x, sy: f.scale?.y, rot: f.rotate, tint: f.tint }); }
+  for (const f of g.frames) { const rgba = getSpriteRgba(al, f.idx); if (!rgba) continue; const b64 = Buffer.from(rgba).toString('base64'); const sp = al.sprites[f.idx]; timeline.push({ rgba: b64, w: sp.width, h: sp.height, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx ? (typeof f.gfx === 'string' ? f.gfx.replace(/^[\'"`]|[\'"`]$/g, '').toUpperCase() : String(f.gfx).toUpperCase()) : undefined, sx: f.scale?.x, sy: f.scale?.y, rot: f.rotate, tint: f.tint, atk: f.atk || [], dmg: f.dmg || [] }); }
     }
     if (timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
 
@@ -215,6 +221,17 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
               <vscode-button id="btnRefresh" title="重新解析 ANI">刷新</vscode-button>
               <vscode-button id="btnCenter" title="将当前帧居中">居中</vscode-button>
             </div>
+            <div class="group">
+              <label style="display:flex;align-items:center;gap:6px">
+                <input id="toggleAxes" type="checkbox" checked /> 坐标系
+              </label>
+              <label style="display:flex;align-items:center;gap:6px">
+                <input id="toggleAtk" type="checkbox" checked /> 攻击盒
+              </label>
+              <label style="display:flex;align-items:center;gap:6px">
+                <input id="toggleDmg" type="checkbox" checked /> 受击盒
+              </label>
+            </div>
             <span class="grow"></span>
           </div>
           <div class="statusbar">
@@ -254,6 +271,9 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                const lblFrame=document.getElementById('lblFrame');
                const lblFrameId=document.getElementById('lblFrameId');
                const lblDelay=document.getElementById('lblDelay');
+               const toggleAxes = document.getElementById('toggleAxes');
+               const toggleAtk = document.getElementById('toggleAtk');
+               const toggleDmg = document.getElementById('toggleDmg');
                let idx=0;let playing=true;let speed=1.0;let timer=null;
                let bgMode = 'dark';
                // camera pan/zoom
@@ -337,6 +357,59 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                  const sy = (typeof f.sy === 'number' ? f.sy : 1);
                  if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
                  ctx.drawImage(buf, Math.floor(-f.w/2), Math.floor(-f.h/2));
+
+                 // overlays: axes and boxes (isometric-ish projection)
+                 // Requirement: Z/Y axes base should be at the bottom of the image (bottom center).
+                 // We've already translated to image center and applied rotate/scale. Now move origin to bottom center.
+                 ctx.save();
+                 ctx.translate(0, Math.floor(f.h/2));
+                 const showAxes = toggleAxes ? (toggleAxes.checked !== false) : true;
+                 const showAtk = toggleAtk ? (toggleAtk.checked !== false) : true;
+                 const showDmg = toggleDmg ? (toggleDmg.checked !== false) : true;
+                 const drawAxes = () => {
+                   ctx.save();
+                   // draw X (right), Y (down), Z (up) axes from origin (0,0,0)
+                   const axisLen = 200;
+                   // Projection: treat Y as depth (receding), Z as vertical up.
+                   // screenX = x + k * y; screenY = -z + k * y
+                   const proj = (x,y,z)=>{ const k = 0.5; return { x: x + k*y, y: -z + k*y }; };
+                   ctx.lineWidth = 1;
+                   // X axis (red)
+                   ctx.strokeStyle = '#ff4d4f'; ctx.beginPath(); let p0 = proj(0,0,0); let p1 = proj(axisLen,0,0); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
+                   // Y axis (green, depth receding)
+                   ctx.strokeStyle = '#52c41a'; ctx.beginPath(); p0 = proj(0,0,0); p1 = proj(0,axisLen,0); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
+                   // Z axis (blue, vertical up)
+                   ctx.strokeStyle = '#1677ff'; ctx.beginPath(); p0 = proj(0,0,0); p1 = proj(0,0,axisLen); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
+                   ctx.restore();
+                 };
+                 const drawBox = (box, color) => {
+                   const proj = (x,y,z)=>{ const k=0.5; return { x: x + k*y, y: -z + k*y }; };
+                   const {x,y,z,w,h,d} = box;
+                   // 8 corners
+                   const c = [
+                     proj(x,   y,   z),
+                     proj(x+w, y,   z),
+                     proj(x+w, y+h, z),
+                     proj(x,   y+h, z),
+                     proj(x,   y,   z+d),
+                     proj(x+w, y,   z+d),
+                     proj(x+w, y+h, z+d),
+                     proj(x,   y+h, z+d),
+                   ];
+                   ctx.save();
+                   ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+                   // bottom rectangle (0-1-2-3)
+                   ctx.beginPath(); ctx.moveTo(c[0].x,c[0].y); for(const i of [1,2,3,0]) ctx.lineTo(c[i].x,c[i].y); ctx.stroke();
+                   // top rectangle (4-5-6-7)
+                   ctx.beginPath(); ctx.moveTo(c[4].x,c[4].y); for(const i of [5,6,7,4]) ctx.lineTo(c[i].x,c[i].y); ctx.stroke();
+                   // verticals
+                   ctx.beginPath(); for(const i of [0,1,2,3]){ ctx.moveTo(c[i].x,c[i].y); ctx.lineTo(c[i+4].x,c[i+4].y); } ctx.stroke();
+                   ctx.restore();
+                 };
+                 if (showAxes) drawAxes();
+                 if (showAtk && Array.isArray(f.atk)) for (const b of f.atk) drawBox(b, '#fadb14'); // yellow
+                 if (showDmg && Array.isArray(f.dmg)) for (const b of f.dmg) drawBox(b, '#13c2c2'); // cyan
+                 ctx.restore();
                  ctx.restore();
                  lblFrame.textContent=String(idx+1);
                  lblFrameId.textContent=String(f.fid??idx);
