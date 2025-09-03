@@ -219,7 +219,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
             </div>
             <div class="group">
               <vscode-button id="btnRefresh" title="重新解析 ANI">刷新</vscode-button>
-              <vscode-button id="btnCenter" title="将当前帧居中">居中</vscode-button>
+              <vscode-button id="btnCenter" title="显示原始 [IMAGE POS] 偏移">原始坐标</vscode-button>
             </div>
             <div class="group">
               <label style="display:flex;align-items:center;gap:6px">
@@ -240,7 +240,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
               <span>帧ID <b id="lblFrameId">0</b></span>
               <span>延迟 <b id="lblDelay">0</b> ms</span>
             </div>
-            <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，滚轮缩放（Ctrl+滚轮更灵敏）</div>
+            <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，按住 Ctrl + 滚轮 缩放</div>
           </div>
           <canvas id="c" width="512" height="512" tabindex="0"></canvas>
            <script nonce="${nonce}">
@@ -279,6 +279,8 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                // camera pan/zoom
                let camX = 0, camY = 0; // in canvas pixels
                let sceneZoom = 1.0;
+               // centered mode: when true, ignore per-frame IMAGE POS (dx,dy) so sprite stays centered
+               let centered = true;
                function applyBg(mode){
                  bgMode = mode || 'dark';
                  canvas.classList.remove('bg-dark','bg-light','bg-checker','bg-transparent');
@@ -350,7 +352,10 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                  const baseY = (canvas.height>>1) + camY;
                  ctx.translate(Math.floor(baseX), Math.floor(baseY));
                  if (sceneZoom !== 1) ctx.scale(sceneZoom, sceneZoom);
-                 ctx.translate(f.dx, f.dy);
+                 // apply per-frame offset only when not centered
+                 const offX = centered ? 0 : f.dx;
+                 const offY = centered ? 0 : f.dy;
+                 ctx.translate(offX, offY);
                  const rot = (f.rot || 0) * Math.PI / 180;
                  if (rot) ctx.rotate(rot);
                  const sx = (typeof f.sx === 'number' ? f.sx : 1);
@@ -431,14 +436,50 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                speedEl.addEventListener('input',()=>setSpeed(parseFloat(speedEl.value)));
                zoomEl.addEventListener('input',()=>setZoom(parseFloat(zoomEl.value)));
                bgSel.addEventListener('change',()=>{ applyBg(bgSel.value); drawFrame(); });
-               if (btnCenter) btnCenter.addEventListener('click',()=>{ const f=timeline[idx]; camX = -f.dx*sceneZoom; camY = -f.dy*sceneZoom; drawFrame(); });
+               if (btnCenter) btnCenter.addEventListener('click',()=>{ centered = false; camX = 0; camY = 0; drawFrame(); });
+               // toggle overlays should redraw immediately
+               if (toggleAxes) toggleAxes.addEventListener('change', ()=> drawFrame());
+               if (toggleAtk) toggleAtk.addEventListener('change', ()=> drawFrame());
+               if (toggleDmg) toggleDmg.addEventListener('change', ()=> drawFrame());
                // mouse pan + wheel zoom
                let dragging=false, lastX=0, lastY=0;
                canvas.addEventListener('mousedown',(e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; });
                window.addEventListener('mouseup',()=>{ dragging=false; canvas.style.cursor='default'; });
                window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-lastX; const dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY; camX += dx; camY += dy; drawFrame(); });
-               canvas.addEventListener('wheel',(e)=>{ const delta = (e.ctrlKey? 0.1:0.05) * (e.deltaY>0? -1: 1); const z = Math.min(4, Math.max(0.25, sceneZoom + delta)); setZoom(z); e.preventDefault(); }, { passive:false });
+               canvas.addEventListener('wheel',(e)=>{
+                 // Only zoom when holding Ctrl inside the canvas
+                 if (!e.ctrlKey) return;
+                 const delta = 0.1 * (e.deltaY>0? -1: 1);
+                 const z = Math.min(4, Math.max(0.25, sceneZoom + delta));
+                 setZoom(z);
+                 e.preventDefault();
+               }, { passive:false });
+               // keyboard shortcuts: Space play/pause, +/- speed, arrows frame step
+               function isTypingTarget(t){
+                 if (!t) return false;
+                 const tag = (t.tagName||'').toUpperCase();
+                 return tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA' || (t.isContentEditable===true);
+               }
+               function clamp(v,min,max){ return v<min?min:v>max?max:v; }
+               window.addEventListener('keydown',(e)=>{
+                 if (isTypingTarget(e.target)) return;
+                 // Space: toggle play/pause
+                 if (e.code==='Space' || e.key===' ') {
+                   setPlaying(!playing);
+                   e.preventDefault();
+                   return;
+                 }
+                 // Left/Right arrows: step frames
+                 if (e.key==='ArrowLeft') { idx=(idx-1+timeline.length)%timeline.length; drawFrame(); e.preventDefault(); return; }
+                 if (e.key==='ArrowRight'){ idx=(idx+1)%timeline.length; drawFrame(); e.preventDefault(); return; }
+                 // +/- speed adjust (ignore when holding Ctrl to avoid conflict with zoom or VSCode shortcuts)
+                 if (!e.ctrlKey) {
+                   if (e.key==='+' || (e.key==='=' && e.shiftKey)) { setSpeed(clamp(speed + 0.1, 0.25, 4)); e.preventDefault(); return; }
+                   if (e.key==='-' || e.key==='_') { setSpeed(clamp(speed - 0.1, 0.25, 4)); e.preventDefault(); return; }
+                 }
+               });
                applyBg('dark');
+               // default centered display
                setSpeed(1.0); setZoom(1.0); drawFrame(); schedule();
                setTimeout(()=>{try{canvas.focus();}catch{}},0);
              }
