@@ -156,6 +156,16 @@ export class PvfModel {
     const f = this.fileList.get(key);
     if (!f) return false;
     const lower = key.toLowerCase();
+    // .ani：始终按文本保存，避免被脚本编译器重写内容
+    if (lower.endsWith('.ani')) {
+      let text = Buffer.from(content).toString('utf8');
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const enc = encodingForKey(lower);
+      const encoded = iconv.encode(text, enc);
+      f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
+      f.changed = true;
+      return true;
+    }
     // stringtable.bin：文本视图（index\tvalue） -> 重新构建二进制
     if (lower === 'stringtable.bin') {
       // parse UTF-8 with BOM optionally
@@ -187,7 +197,7 @@ export class PvfModel {
         return true;
       }
     }
-    // 如果文本以 #PVF_File 开头，也按脚本编译（应对某些最初未识别为脚本的情况）
+  // 如果文本以 #PVF_File 开头，也按脚本编译（应对某些最初未识别为脚本的情况）
     {
       const prefix = Buffer.from(content.subarray(0, Math.min(16, content.length))).toString('utf8');
       if (prefix.startsWith('#PVF_File')) {

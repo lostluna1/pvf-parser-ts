@@ -51,9 +51,14 @@ export function decompileScript(model: any, f: PvfFile): string {
           const kt = items[i].t;
           const kv = items[i].v;
           if (kt === 5 || kt === 7 || kt === 9) break;
-          const f32 = new DataView(new Uint32Array([kv]).buffer).getFloat32(0, true);
-          const asFloat = Number.isFinite(f32) && (Math.abs(kv) > 1_000_000 || Math.abs(f32 % 1) > 1e-6);
-          line.push(asFloat ? formatFloat(f32) : String(kv));
+          if (kt === 4) {
+            const f32 = new DataView(new Uint32Array([kv]).buffer).getFloat32(0, true);
+            line.push(formatFloat(f32));
+          } else {
+            // print as signed 32-bit
+            const s32 = new DataView(new Uint32Array([kv]).buffer).getInt32(0, true);
+            line.push(String(s32));
+          }
           i++;
         }
         if (line.length) sb.push('\t' + line.join('\t'));
@@ -68,9 +73,13 @@ export function decompileScript(model: any, f: PvfFile): string {
       sb.push(`\t\`${val || ''}\``);
       i++;
     } else {
-      const f32 = new DataView(new Uint32Array([v]).buffer).getFloat32(0, true);
-      const asFloat = Number.isFinite(f32) && (Math.abs(v) > 1_000_000 || Math.abs(f32 % 1) > 1e-6);
-      sb.push((asFloat ? formatFloat(f32) : String(v)));
+      if (t === 4) {
+        const f32 = new DataView(new Uint32Array([v]).buffer).getFloat32(0, true);
+        sb.push(formatFloat(f32));
+      } else {
+        const s32 = new DataView(new Uint32Array([v]).buffer).getInt32(0, true);
+        sb.push(String(s32));
+      }
     }
     i++;
   }
