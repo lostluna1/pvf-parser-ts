@@ -25,7 +25,22 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
     const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').toLowerCase();
     const cache = new Map<string, any>();
     async function loadAlbumFor(imgLogical: string): Promise<any | undefined> {
-      let logical = imgLogical.replace(/\\/g, '/').replace(/^\//, '').toLowerCase(); if (!logical.startsWith('sprite/')) logical = 'sprite/' + logical; const normalizedKey = norm(logical);
+      // sanitize quotes/backticks that may wrap or prefix the path
+      let logicalRaw = (imgLogical || '').trim();
+      logicalRaw = logicalRaw.replace(/^[`'\"]+/, '');
+      logicalRaw = logicalRaw.replace(/[`'\"]+$/, '');
+      let logical = logicalRaw.replace(/\\/g, '/').replace(/^\//, '').toLowerCase(); if (!logical.startsWith('sprite/')) logical = 'sprite/' + logical; const normalizedKey = norm(logical);
+      const parts = normalizedKey.split('/');
+      const fileName = parts[parts.length - 1] || '';
+      const dirPath = parts.slice(0, -1).join('/');
+      const hasPrintfWildcard = /%\d*d|%[a-z]/i.test(fileName);
+      const buildFuzzyRegex = (name: string) => {
+        let pat = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        pat = pat.replace(/%\d*d|%[a-zA-Z]/g, '.*');
+        return new RegExp('^' + pat + '$', 'i');
+      };
+  const fuzzyRe = hasPrintfWildcard ? buildFuzzyRegex(fileName) : null;
+  const normDir = (d: string) => d.replace(/^sprite\//, '');
       if (cache.has(normalizedKey)) return cache.get(normalizedKey);
       // try index first
       try {
@@ -35,7 +50,16 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
           try {
             const buf = await readFileBuffer(rec.npk);
             const list = await readNpkFromBuffer(buf, rec.npk);
-            const found = list.find(a => norm(a.path || '') === normalizedKey) || list.find(a => norm(a.path || '').endsWith('/' + normalizedKey.split('/').slice(-1).join('/')));
+            let found = list.find(a => norm(a.path || '') === normalizedKey) || list.find(a => norm(a.path || '').endsWith('/' + normalizedKey.split('/').slice(-1).join('/')));
+      if (!found && fuzzyRe) {
+              found = list.find(a => {
+                const ap = norm(a.path || '');
+                const apar = ap.split('/');
+                const aname = apar[apar.length - 1] || '';
+                const adir = apar.slice(0, -1).join('/');
+        return (adir === dirPath || normDir(adir) === normDir(dirPath)) && fuzzyRe!.test(aname);
+              });
+            }
             if (found) { cache.set(normalizedKey, found); try { out.appendLine(`[Index HIT] ${normalizedKey} -> ${rec.npk}`); } catch {} ; return found; }
           } catch (e) { try { out.appendLine(`[Index ERR] ${normalizedKey} -> ${String(e)}`); } catch {} ; }
         }
@@ -48,17 +72,27 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
           const items = await fs.readdir(dir, { withFileTypes: true });
           for (const it of items) {
             if (!it.isFile()) continue; const lower = it.name.toLowerCase(); if (!lower.endsWith('.npk')) continue; foundAnyNpk = true; const full = path.join(dir, it.name);
-            try {
-              const buf = await readFileBuffer(full); const entries = readNpkEntries(buf);
-              let hit = entries.find(e => norm(e.path) === normalizedKey);
-              if (!hit) hit = entries.find(e => { const ep = norm(e.path); return ep.endsWith('/' + tail2) || ep.endsWith('/' + tail1); });
-              if (hit) {
-                const list = await readNpkFromBuffer(buf, full);
-                let found = list.find(a => norm(a.path || '') === normalizedKey);
-                if (!found) found = list.find(a => { const ap = norm(a.path || ''); return ap.endsWith('/' + tail2) || ap.endsWith('/' + tail1); }) || list[0];
-                if (found) { cache.set(normalizedKey, found); return found; }
-              }
-            } catch { }
+              try {
+                const buf = await readFileBuffer(full); const entries = readNpkEntries(buf);
+                let hit = entries.find(e => norm(e.path) === normalizedKey);
+                if (!hit) hit = entries.find(e => { const ep = norm(e.path); return ep.endsWith('/' + tail2) || ep.endsWith('/' + tail1); });
+                // If fuzzy requested, don't rely on entries-hit only; we need to open list to test regex on filename
+                if (hit || fuzzyRe) {
+                  const list = await readNpkFromBuffer(buf, full);
+                  let found = list.find(a => norm(a.path || '') === normalizedKey);
+                  if (!found) found = list.find(a => { const ap = norm(a.path || ''); return ap.endsWith('/' + tail2) || ap.endsWith('/' + tail1); });
+          if (!found && fuzzyRe) {
+                    found = list.find(a => {
+                      const ap = norm(a.path || '');
+                      const apar = ap.split('/');
+                      const aname = apar[apar.length - 1] || '';
+                      const adir = apar.slice(0, -1).join('/');
+            return (adir === dirPath || normDir(adir) === normDir(dirPath)) && fuzzyRe!.test(aname);
+                    });
+                  }
+                  if (found) { cache.set(normalizedKey, found); return found; }
+                }
+              } catch { }
           }
         } catch { }
       }
@@ -164,6 +198,11 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
               <span class="pill" id="lblSpeed">1.00x</span>
             </div>
             <div class="group">
+              <span>缩放</span>
+              <input id="zoom" class="range-fallback" type="range" min="0.25" max="4" step="0.05" value="1" style="width:180px" />
+              <span class="pill" id="lblZoom">100%</span>
+            </div>
+            <div class="group">
               <span>背景</span>
               <vscode-dropdown id="bgSel">
                 <vscode-option value="dark">深色</vscode-option>
@@ -174,6 +213,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
             </div>
             <div class="group">
               <vscode-button id="btnRefresh" title="重新解析 ANI">刷新</vscode-button>
+              <vscode-button id="btnCenter" title="将当前帧居中">居中</vscode-button>
             </div>
             <span class="grow"></span>
           </div>
@@ -183,7 +223,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
               <span>帧ID <b id="lblFrameId">0</b></span>
               <span>延迟 <b id="lblDelay">0</b> ms</span>
             </div>
-            <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧</div>
+            <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，滚轮缩放（Ctrl+滚轮更灵敏）</div>
           </div>
           <canvas id="c" width="512" height="512" tabindex="0"></canvas>
            <script nonce="${nonce}">
@@ -205,14 +245,20 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                const btnPrev=document.getElementById('btnPrev');
                const btnNext=document.getElementById('btnNext');
                const btnRefresh=document.getElementById('btnRefresh');
+               const btnCenter=document.getElementById('btnCenter');
                const speedEl=document.getElementById('speed');
+               const zoomEl=document.getElementById('zoom');
                const bgSel=document.getElementById('bgSel');
                const lblSpeed=document.getElementById('lblSpeed');
+               const lblZoom=document.getElementById('lblZoom');
                const lblFrame=document.getElementById('lblFrame');
                const lblFrameId=document.getElementById('lblFrameId');
                const lblDelay=document.getElementById('lblDelay');
                let idx=0;let playing=true;let speed=1.0;let timer=null;
                let bgMode = 'dark';
+               // camera pan/zoom
+               let camX = 0, camY = 0; // in canvas pixels
+               let sceneZoom = 1.0;
                function applyBg(mode){
                  bgMode = mode || 'dark';
                  canvas.classList.remove('bg-dark','bg-light','bg-checker','bg-transparent');
@@ -277,11 +323,14 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                    ctx.fillStyle = '#111111';
                    ctx.fillRect(0,0,canvas.width,canvas.height);
                  }
-                 const cx=(canvas.width>>1)+f.dx;const cy=(canvas.height>>1)+f.dy;
-                 // composite with transform: translate->rotate->scale->draw centered
+                 // composite with transform: center + camera pan + scene zoom, then frame offset
                  ctx.save();
                  ctx.globalCompositeOperation = 'source-over';
-                 ctx.translate(Math.floor(cx), Math.floor(cy));
+                 const baseX = (canvas.width>>1) + camX;
+                 const baseY = (canvas.height>>1) + camY;
+                 ctx.translate(Math.floor(baseX), Math.floor(baseY));
+                 if (sceneZoom !== 1) ctx.scale(sceneZoom, sceneZoom);
+                 ctx.translate(f.dx, f.dy);
                  const rot = (f.rot || 0) * Math.PI / 180;
                  if (rot) ctx.rotate(rot);
                  const sx = (typeof f.sx === 'number' ? f.sx : 1);
@@ -301,14 +350,23 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                }
                function setPlaying(p){playing=p;btnPlay.textContent=playing?'暂停':'播放';if(playing){drawFrame();schedule();}}
                function setSpeed(v){speed=v; if(speedEl) speedEl.value=String(v); lblSpeed.textContent=v.toFixed(2)+'x';}
+               function setZoom(v){sceneZoom=v; if(zoomEl) zoomEl.value=String(v); lblZoom.textContent=Math.round(v*100)+'%'; drawFrame();}
                btnPlay.addEventListener('click',()=>setPlaying(!playing));
                btnPrev.addEventListener('click',()=>{idx=(idx-1+timeline.length)%timeline.length;drawFrame();});
                btnNext.addEventListener('click',()=>{idx=(idx+1)%timeline.length;drawFrame();});
                if (btnRefresh) btnRefresh.addEventListener('click',()=>{ if (vscodeApi) vscodeApi.postMessage({ type:'refresh' }); else location.reload(); });
                speedEl.addEventListener('input',()=>setSpeed(parseFloat(speedEl.value)));
+               zoomEl.addEventListener('input',()=>setZoom(parseFloat(zoomEl.value)));
                bgSel.addEventListener('change',()=>{ applyBg(bgSel.value); drawFrame(); });
+               if (btnCenter) btnCenter.addEventListener('click',()=>{ const f=timeline[idx]; camX = -f.dx*sceneZoom; camY = -f.dy*sceneZoom; drawFrame(); });
+               // mouse pan + wheel zoom
+               let dragging=false, lastX=0, lastY=0;
+               canvas.addEventListener('mousedown',(e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; });
+               window.addEventListener('mouseup',()=>{ dragging=false; canvas.style.cursor='default'; });
+               window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-lastX; const dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY; camX += dx; camY += dy; drawFrame(); });
+               canvas.addEventListener('wheel',(e)=>{ const delta = (e.ctrlKey? 0.1:0.05) * (e.deltaY>0? -1: 1); const z = Math.min(4, Math.max(0.25, sceneZoom + delta)); setZoom(z); e.preventDefault(); }, { passive:false });
                applyBg('dark');
-               setSpeed(1.0);drawFrame();schedule();
+               setSpeed(1.0); setZoom(1.0); drawFrame(); schedule();
                setTimeout(()=>{try{canvas.focus();}catch{}},0);
              }
              (function ensureToolkit(){
