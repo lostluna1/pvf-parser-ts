@@ -23,7 +23,9 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
     try { await indexer.loadIndexFromDisk(context); } catch { }
     const out = vscode.window.createOutputChannel('PVF');
     const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').toLowerCase();
-    const cache = new Map<string, any>();
+  const cache = new Map<string, any>();
+  // 按原始出现顺序记录帧（包括无图片帧）
+  const framesSeq: { img: string, idx: number, delay: number, pos?: { x: number, y: number }, gfx?: string, scale?: { x: number, y: number }, rotate?: number, tint?: [number, number, number, number], atk?: { x:number,y:number,z:number,w:number,h:number,d:number }[], dmg?: { x:number,y:number,z:number,w:number,h:number,d:number }[] }[] = [];
     async function loadAlbumFor(imgLogical: string): Promise<any | undefined> {
       // sanitize quotes/backticks that may wrap or prefix the path
       let logicalRaw = (imgLogical || '').trim();
@@ -104,9 +106,39 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
     const blockRegex = /\[FRAME(\d{3})\]([\s\S]*?)(?=\n\[FRAME|$)/gi; let bm: RegExpExecArray | null;
     while ((bm = blockRegex.exec(text)) !== null) {
       const block = bm[2] || '';
-      const imgPathM = /\[IMAGE\][\s\S]*?(?:`([^`]+)`|"([^"]+)"|'([^']+)'|([^\r\n]+\.img))/i.exec(block);
-      if (!imgPathM) continue; const img = (imgPathM[1] || imgPathM[2] || imgPathM[3] || imgPathM[4] || '').trim();
-      let idx = 0; const after = block.slice(imgPathM.index + imgPathM[0].length); const idxM = /\s*\r?\n\s*(\d+)/.exec(after); if (idxM) idx = parseInt(idxM[1], 10) || 0;
+      // 解析 [IMAGE] 段，允许空路径 `` 或 ""
+      let img = '';
+      let idx = 0;
+      const imgHeader = /\[IMAGE\]/i.exec(block);
+      if (imgHeader) {
+        const afterImg = block.slice(imgHeader.index + imgHeader[0].length);
+        const lines = afterImg.split(/\r?\n/);
+        let p = 0;
+        // 跳过空行
+        while (p < lines.length && lines[p].trim() === '') p++;
+        const pathLine = (lines[p] || '').trim();
+        p++;
+        // 跳过空行，读取索引行
+        while (p < lines.length && lines[p].trim() === '') p++;
+        const idxLine = (lines[p] || '').trim();
+        // 解析路径：去除首尾引号/反引号
+        if (pathLine.length > 0) {
+          if ((pathLine.startsWith('`') && pathLine.endsWith('`')) || (pathLine.startsWith('"') && pathLine.endsWith('"')) || (pathLine.startsWith("'") && pathLine.endsWith("'"))) {
+            img = pathLine.slice(1, -1).trim();
+          } else {
+            img = pathLine.trim();
+          }
+        } else {
+          img = '';
+        }
+        // 解析索引
+        const parsed = parseInt(idxLine, 10);
+        if (!Number.isNaN(parsed)) idx = parsed;
+      } else {
+        // 未找到 [IMAGE]，当作空图处理
+        img = '';
+        idx = 0;
+      }
       const delayM = /\[DELAY\]\s*\r?\n\s*(\d+)/i.exec(block); const delay = delayM ? parseInt(delayM[1], 10) : 50;
       const posM = /\[IMAGE POS\]\s*\r?\n\s*(-?\d+)\s+(-?\d+)/i.exec(block); const pos = posM ? { x: parseInt(posM[1], 10), y: parseInt(posM[2], 10) } : undefined;
   const geM = /\[GRAPHIC\s+EFFECT\]\s*\r?\n\s*([^\r\n]+)/i.exec(block);
@@ -137,20 +169,40 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
         tint = [r, g, b, a];
       }
   if (!groups.has(img)) groups.set(img, { img, frames: [] }); groups.get(img)!.frames.push({ idx, delay, pos, gfx, scale, rotate, tint, atk: atkBoxes, dmg: dmgBoxes });
+      // 记录顺序帧（无图帧也纳入）
+      framesSeq.push({ img, idx, delay, pos, gfx, scale, rotate, tint, atk: atkBoxes, dmg: dmgBoxes });
     }
     if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
 
     const albumMap = new Map<string, any>();
+    // 仅针对非空 IMG 路径进行加载
+    const uniqueImgs = Array.from(new Set(framesSeq.map(f => (f.img || '').trim()).filter(s => s.length > 0)));
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '查找并加载 IMG 资源…' }, async (p) => {
-      const total = groups.size; let done = 0;
-      for (const [img] of groups) { const al = await loadAlbumFor(img); if (al) albumMap.set(img, al); done++; p.report({ increment: (done / total) * 100, message: `${done}/${total}` }); }
+      const total = uniqueImgs.length || 1; let done = 0;
+      for (const img of uniqueImgs) { const al = await loadAlbumFor(img); if (al) albumMap.set(img, al); done++; p.report({ increment: (done / total) * 100, message: `${done}/${total}` }); }
     });
-    if (albumMap.size === 0) { const missing = Array.from(groups.keys()).slice(0, 5).join(', '); vscode.window.showWarningMessage('未找到任何 IMG 资源。缺失示例: ' + missing); return; }
+    if (uniqueImgs.length > 0 && albumMap.size === 0) {
+      const missing = uniqueImgs.slice(0, 5).join(', ');
+      vscode.window.showWarningMessage('未找到任何 IMG 资源，仅显示坐标/碰撞盒。缺失示例: ' + missing);
+    }
 
   const timeline: { rgba: string, w: number, h: number, delay: number, dx: number, dy: number, fid: number, gfx?: string, sx?: number, sy?: number, rot?: number, tint?: [number, number, number, number], atk?: {x:number,y:number,z:number,w:number,h:number,d:number}[], dmg?: {x:number,y:number,z:number,w:number,h:number,d:number}[] }[] = [];
-    for (const [img, g] of groups) {
-      const al = albumMap.get(img); if (!al) continue;
-  for (const f of g.frames) { const rgba = getSpriteRgba(al, f.idx); if (!rgba) continue; const b64 = Buffer.from(rgba).toString('base64'); const sp = al.sprites[f.idx]; timeline.push({ rgba: b64, w: sp.width, h: sp.height, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx ? (typeof f.gfx === 'string' ? f.gfx.replace(/^[\'"`]|[\'"`]$/g, '').toUpperCase() : String(f.gfx).toUpperCase()) : undefined, sx: f.scale?.x, sy: f.scale?.y, rot: f.rotate, tint: f.tint, atk: f.atk || [], dmg: f.dmg || [] }); }
+    // 透明 1x1 RGBA 占位（无图帧使用）
+    const TRANSPARENT_1X1 = 'AAAAAA==';
+    for (const f of framesSeq) {
+      const imgKey = (f.img || '').trim();
+      const al = imgKey ? albumMap.get(imgKey) : undefined;
+      if (al) {
+        const rgba = getSpriteRgba(al, f.idx);
+        if (rgba) {
+          const b64 = Buffer.from(rgba).toString('base64');
+          const sp = al.sprites[f.idx];
+          timeline.push({ rgba: b64, w: sp.width, h: sp.height, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx ? (typeof f.gfx === 'string' ? f.gfx.replace(/^[\'"`]|[\'"`]$/g, '').toUpperCase() : String(f.gfx).toUpperCase()) : undefined, sx: f.scale?.x, sy: f.scale?.y, rot: f.rotate, tint: f.tint, atk: f.atk || [], dmg: f.dmg || [] });
+          continue;
+        }
+      }
+      // 无图或取图失败：仍然入时间轴，仅显示盒与坐标
+      timeline.push({ rgba: TRANSPARENT_1X1, w: 1, h: 1, delay: f.delay, dx: f.pos?.x || 0, dy: f.pos?.y || 0, fid: f.idx, gfx: f.gfx ? (typeof f.gfx === 'string' ? f.gfx.replace(/^[\'"`]|[\'"`]$/g, '').toUpperCase() : String(f.gfx).toUpperCase()) : undefined, sx: f.scale?.x, sy: f.scale?.y, rot: f.rotate, tint: f.tint, atk: f.atk || [], dmg: f.dmg || [] });
     }
     if (timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
 
@@ -170,13 +222,16 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}';" />
         <style>
           :root{--bg:var(--vscode-editor-background);--fg:var(--vscode-foreground);--panel:var(--vscode-editorWidget-background);--border:var(--vscode-panel-border);--muted:var(--vscode-descriptionForeground);--accent:var(--vscode-button-background);--accent-fg:var(--vscode-button-foreground);}
-          body{margin:0;padding:10px;font-family:Segoe UI,Arial,"Microsoft YaHei",sans-serif;color:var(--fg);background:var(--bg)}
-          #c{image-rendering:pixelated;outline:none;border:1px solid var(--border);border-radius:8px;display:block;max-width:100%}
-          .toolbar{margin:6px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);padding:8px 10px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+          html,body{height:100%;}
+          body{margin:0;padding:0;font-family:Segoe UI,Arial,"Microsoft YaHei",sans-serif;color:var(--fg);background:var(--bg);display:flex}
+          .container{display:flex;flex-direction:column;gap:6px;box-sizing:border-box;padding:10px;width:100%;height:100%}
+          .canvas-area{position:relative;flex:1 1 auto;min-height:0}
+          #c{image-rendering:pixelated;outline:none;border:1px solid var(--border);border-radius:8px;display:block;width:100%;height:100%}
+          .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);padding:8px 10px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
           .toolbar .group{display:flex;align-items:center;gap:8px}
           .toolbar .grow{flex:1 1 auto}
           .pill{padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--fg)}
-          .statusbar{display:flex;align-items:center;gap:16px;justify-content:space-between;margin:6px 0;background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:8px;color:var(--muted)}
+          .statusbar{display:flex;align-items:center;gap:16px;justify-content:space-between;background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:8px;color:var(--muted)}
           .statusbar .stats{display:flex;gap:16px}
           /* Canvas background modes */
           .bg-dark{background:#111}
@@ -192,6 +247,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
         </head>
         <body>
           <script type="module" src="${toolkitSrc}" nonce="${nonce}"></script>
+          <div class="container">
           <div class="toolbar">
             <div class="group">
               <vscode-button appearance="primary" id="btnPlay" title="空格">暂停</vscode-button>
@@ -242,7 +298,8 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
             </div>
             <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，按住 Ctrl + 滚轮 缩放</div>
           </div>
-          <canvas id="c" width="512" height="512" tabindex="0"></canvas>
+          <div class="canvas-area"><canvas id="c" tabindex="0"></canvas></div>
+          </div>
            <script nonce="${nonce}">
              const timeline=${JSON.stringify(timeline)};
              const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
@@ -258,6 +315,22 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
               // offscreen buffer for sprite to allow composite operations
               const buf=document.createElement('canvas');
               const bctx=buf.getContext('2d');
+              // handle canvas DPI and size to fill remaining area
+              function resizeCanvas(){
+                const rect = canvas.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                const w = Math.max(1, Math.floor(rect.width));
+                const h = Math.max(1, Math.floor(rect.height));
+                const needW = Math.floor(w * dpr), needH = Math.floor(h * dpr);
+                if (canvas.width !== needW || canvas.height !== needH) {
+                  canvas.width = needW; canvas.height = needH;
+                }
+                ctx.setTransform(dpr,0,0,dpr,0,0);
+                drawFrame();
+              }
+              const ro = new ResizeObserver(()=> resizeCanvas());
+              try { ro.observe(canvas.parentElement || canvas); } catch {}
+              window.addEventListener('resize', resizeCanvas);
                const btnPlay=document.getElementById('btnPlay');
                const btnPrev=document.getElementById('btnPrev');
                const btnNext=document.getElementById('btnNext');
@@ -291,6 +364,12 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                }
                function b64ToU8(b64){const s=atob(b64);const arr=new Uint8ClampedArray(s.length);for(let i=0;i<s.length;i++)arr[i]=s.charCodeAt(i);return arr;}
                function drawFrame(){
+                 const dpr = window.devicePixelRatio || 1;
+                 // logical canvas size in CSS pixels
+                 const cw = Math.max(1, Math.floor(canvas.width / dpr));
+                 const ch = Math.max(1, Math.floor(canvas.height / dpr));
+                 // ensure transform matches DPR (in case monitor scale changes)
+                 try { ctx.setTransform(dpr,0,0,dpr,0,0); } catch {}
                  const f=timeline[idx];
                  const imgData=new ImageData(b64ToU8(f.rgba),f.w,f.h);
                  // apply client-side graphic effects for this frame
@@ -327,15 +406,15 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                  // draw canvas background so composite modes take effect against it
                  ctx.globalCompositeOperation = 'source-over';
                  if(bgMode==='transparent'){
-                   ctx.clearRect(0,0,canvas.width,canvas.height);
+                   ctx.clearRect(0,0,cw,ch);
                  } else if(bgMode==='light'){
                    ctx.fillStyle = '#e6e6e6';
-                   ctx.fillRect(0,0,canvas.width,canvas.height);
+                   ctx.fillRect(0,0,cw,ch);
                  } else if(bgMode==='checker'){
                    // simple checker pattern (16px)
                    const size = 16; const c1 = '#ffffff', c2 = '#cfcfcf';
-                   for(let y=0;y<canvas.height;y+=size){
-                     for(let x=0;x<canvas.width;x+=size){
+                   for(let y=0;y<ch;y+=size){
+                     for(let x=0;x<cw;x+=size){
                        const even = ((x/size)|(y/size)) % 2 === 0;
                        ctx.fillStyle = even ? c1 : c2;
                        ctx.fillRect(x,y,size,size);
@@ -343,13 +422,13 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                    }
                  } else { // dark
                    ctx.fillStyle = '#111111';
-                   ctx.fillRect(0,0,canvas.width,canvas.height);
+                   ctx.fillRect(0,0,cw,ch);
                  }
                  // composite with transform: center + camera pan + scene zoom, then frame offset
                  ctx.save();
                  ctx.globalCompositeOperation = 'source-over';
-                 const baseX = (canvas.width>>1) + camX;
-                 const baseY = (canvas.height>>1) + camY;
+                 const baseX = (cw>>1) + camX;
+                 const baseY = (ch>>1) + camY;
                  ctx.translate(Math.floor(baseX), Math.floor(baseY));
                  if (sceneZoom !== 1) ctx.scale(sceneZoom, sceneZoom);
                  // apply per-frame offset only when not centered
@@ -480,7 +559,10 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
                });
                applyBg('dark');
                // default centered display
-               setSpeed(1.0); setZoom(1.0); drawFrame(); schedule();
+               setSpeed(1.0); setZoom(1.0);
+               // trigger initial size and first draw
+               resizeCanvas();
+               schedule();
                setTimeout(()=>{try{canvas.focus();}catch{}},0);
              }
              (function ensureToolkit(){
