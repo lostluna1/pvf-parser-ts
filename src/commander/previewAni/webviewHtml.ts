@@ -18,6 +18,7 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
           .pill{padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--fg)}
           .statusbar{display:flex;align-items:center;gap:16px;justify-content:space-between;background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:8px;color:var(--muted)}
           .statusbar .stats{display:flex;gap:16px}
+          .statusbar .stats span b#lblLayer{color:var(--fg)}
           /* Canvas background modes */
           .bg-dark{background:#111}
           .bg-light{background:#e6e6e6}
@@ -82,6 +83,7 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
               <span>帧 <b id="lblFrame">1</b> / ${timeline.length}</span>
               <span>帧ID <b id="lblFrameId">0</b></span>
               <span>延迟 <b id="lblDelay">0</b> ms</span>
+              <span>图层 <b id="lblLayer">MAIN</b></span>
             </div>
             <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，按住 Ctrl + 滚轮 缩放</div>
           </div>
@@ -139,6 +141,9 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                // camera pan/zoom
                let camX = 0, camY = 0; // in canvas pixels
                let sceneZoom = 1.0;
+               // Layer picking state
+               let selectedLayer = null; // { frame: number, layer: any }
+               let lastPolys = []; // [{ layer, poly: [{x,y},...] }]
                function applyBg(mode){
                  bgMode = mode || 'dark';
                  canvas.classList.remove('bg-dark','bg-light','bg-checker','bg-transparent');
@@ -148,6 +153,31 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  else canvas.classList.add('bg-dark');
                }
                function b64ToU8(b64){const s=atob(b64);const arr=new Uint8ClampedArray(s.length);for(let i=0;i<s.length;i++)arr[i]=s.charCodeAt(i);return arr;}
+               function pointInPoly(px, py, poly){
+                 let inside=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+                   const xi=poly[i].x, yi=poly[i].y; const xj=poly[j].x, yj=poly[j].y;
+                   const intersect = ((yi>py)!=(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi+0.00001)+xi);
+                   if(intersect) inside=!inside;
+                 } return inside;
+               }
+               function buildLayerPolys(layers, cw, ch, dpr){
+                 lastPolys=[];
+                 const baseX = (cw>>1) + camX; const baseY = (ch>>1) + camY;
+                 for(const L of layers){
+                   const rot=(L.rot||0)*Math.PI/180; const cos=Math.cos(rot), sin=Math.sin(rot);
+                   const sx=(typeof L.sx==='number'?L.sx:1); const sy=(typeof L.sy==='number'?L.sy:1);
+                   const ox=L.ox|0, oy=L.oy|0, w=L.w, h=L.h;
+                   const pts=[
+                     {x:ox,y:oy},{x:ox+w,y:oy},{x:ox+w,y:oy+h},{x:ox,y:oy+h}
+                   ].map(p=>{
+                     let x=p.x*sx, y=p.y*sy;
+                     const rx=x*cos - y*sin; const ry=x*sin + y*cos;
+                     const wx=L.dx + rx; const wy=L.dy + ry;
+                     return { x: (baseX + wx*sceneZoom), y: (baseY + wy*sceneZoom) };
+                   });
+                   lastPolys.push({ layer:L, poly:pts });
+                 }
+               }
                function drawFrame(){
                  const dpr = window.devicePixelRatio || 1;
                  // logical canvas size in CSS pixels
@@ -225,6 +255,8 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  const baseX = (cw>>1) + camX; const baseY = (ch>>1) + camY; ctx.translate(Math.floor(baseX), Math.floor(baseY)); if (sceneZoom !== 1) ctx.scale(sceneZoom, sceneZoom);
                  // 按层顺序绘制
                  for (const L of layers) { processLayer(L); }
+                 // 生成多边形用于拾取（需在变换下完成，因此在 restore 之前记录世界坐标 -> 之后转换为屏幕坐标，我们采用复制逻辑）
+                 buildLayerPolys(layers, cw, ch, dpr);
 
                  // overlays: axes and boxes (isometric-ish projection)
                  // Requirement: Z/Y axes base should be at the bottom of the image (bottom center).
@@ -280,9 +312,31 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  if (showDmg && Array.isArray(f.dmg)) for (const b of f.dmg) drawBox(b, '#13c2c2'); // cyan
                  ctx.restore();
                  ctx.restore();
+                 // 高亮选中图层 (在屏幕坐标)
+                 if (selectedLayer && selectedLayer.frame === idx){
+                   const entry = lastPolys.find(p=>p.layer===selectedLayer.layer);
+                   if (entry){
+                     ctx.save();
+                     ctx.lineWidth=2; ctx.strokeStyle='#ff00ff'; ctx.setLineDash([6,4]);
+                     const poly=entry.poly; ctx.beginPath(); ctx.moveTo(poly[0].x, poly[0].y); for(let i=1;i<poly.length;i++) ctx.lineTo(poly[i].x, poly[i].y); ctx.closePath(); ctx.stroke();
+                     ctx.setLineDash([]);
+                     // label
+                     const cx=poly.reduce((a,p)=>a+p.x,0)/poly.length; const cy=Math.min(...poly.map(p=>p.y));
+                     const label= entry.layer.__id || 'LAYER';
+                     ctx.font='12px Segoe UI'; const tw=ctx.measureText(label).width+10; const th=18;
+                     ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(cx-tw/2, cy-th-6, tw, th);
+                     ctx.fillStyle='#fff'; ctx.fillText(label, cx-tw/2+5, cy-th-6+13);
+                     ctx.restore();
+                   }
+                 }
                  lblFrame.textContent=String(idx+1);
                  lblFrameId.textContent=String(f.fid??idx);
                  lblDelay.textContent=String(f.delay);
+                 if (selectedLayer && selectedLayer.frame === idx){
+                   lblLayer.textContent = selectedLayer.layer.__id || 'MAIN';
+                 } else {
+                   lblLayer.textContent = 'MAIN';
+                 }
                }
                function schedule(){
                  if(timer)clearTimeout(timer);
@@ -310,6 +364,21 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                canvas.addEventListener('mousedown',(e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; });
                window.addEventListener('mouseup',()=>{ dragging=false; canvas.style.cursor='default'; });
                window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-lastX; const dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY; camX += dx; camY += dy; drawFrame(); });
+               canvas.addEventListener('click',(e)=>{
+                 const rect = canvas.getBoundingClientRect();
+                 const px = e.clientX - rect.left; const py = e.clientY - rect.top;
+                 // 自顶向下寻找(后绘制的在数组后面，但在逻辑里我们按顺序绘制；拾取期望顶层优先 -> 逆序遍历)
+                 let picked=null;
+                 for (let i=lastPolys.length-1;i>=0;i--){
+                   if(pointInPoly(px,py,lastPolys[i].poly)){ picked=lastPolys[i]; break; }
+                 }
+                 if (picked){
+                   selectedLayer={ frame: idx, layer: picked.layer };
+                 } else {
+                   selectedLayer=null;
+                 }
+                 drawFrame();
+               });
                canvas.addEventListener('wheel',(e)=>{
                  // Only zoom when holding Ctrl inside the canvas
                  if (!e.ctrlKey) return;
