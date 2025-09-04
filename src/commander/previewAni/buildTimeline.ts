@@ -120,6 +120,8 @@ function buildTimelineFromSequence(framesSeq: FrameSeqEntry[], albumMap: Map<str
 /**
  * 组合主 ani 与 ALS 附加图层，生成含多图层的 timeline。主帧数保持不变；附加层帧数不足时该层在该帧不绘制；超过则忽略多余部分。
  */
+// 现在 relLayer 表示基于主 ani 的层级 (0=与主层同平面; >0 在主层之上; <0 在主层之下)
+// order 表示 startFrame (可以为负数提前播放)
 export async function buildCompositeTimeline(context: vscode.ExtensionContext, root: string, mainFrames: FrameSeqEntry[], alsParsed: ParsedAls | null, layerAniMap: Map<string, { frames: FrameSeqEntry[]; relLayer: number; order: number; id: string; source: string }>, out?: vscode.OutputChannel) : Promise<{ timeline: any[], albumMap: Map<string, any> }> {
   // 收集所有帧引用的 IMG
   const collectImgs = (frames: FrameSeqEntry[]) => frames.map(f=> (f.img||'').trim()).filter(s=> s.length>0 && !s.toLowerCase().endsWith('.ani'));
@@ -148,7 +150,10 @@ export async function buildCompositeTimeline(context: vscode.ExtensionContext, r
     return { rgba: TRANSPARENT_1X1, w:1, h:1, dx:(f.pos?.x||0), dy:(f.pos?.y||0), ox:0, oy:0, fid: f.idx };
   };
 
-  const layerList = Array.from(layerAniMap.values()).sort((a,b)=> a.relLayer === b.relLayer ? a.order - b.order : a.relLayer - b.relLayer);
+  // 图层列表：按 depth(relLayer) 升序；同 depth 保留文件出现顺序 (layerAniMap 插入顺序即 adds 顺序)
+  const layerList = Array.from(layerAniMap.values()).map((v,i)=> ({v,i}))
+    .sort((a,b)=> a.v.relLayer === b.v.relLayer ? a.i - b.i : a.v.relLayer - b.v.relLayer)
+    .map(x=> x.v);
   if (out) {
     for (const l of layerList) {
       out.appendLine(`[ALS] 图层 id=${l.id} rel=${l.relLayer} order=${l.order} 帧数=${l.frames.length}`);
@@ -160,22 +165,23 @@ export async function buildCompositeTimeline(context: vscode.ExtensionContext, r
     const mainLayerFrame = makeLayerFrame(mf);
     // 主帧作为单独对象，同时放入 layers 数组；攻击盒等沿用主帧
     const layers: any[] = [];
-    // 先绘制所有在主层以下的图层
-    for (const l of layerList) {
-      if (l.relLayer < 0) {
-        if (i < l.frames.length) { layers.push({ ...makeLayerFrame(l.frames[i]), __rel: l.relLayer, __order: l.order, __id: l.id }); }
-      }
-    }
-    // 主帧
+    // 主层加入
     layers.push({ ...mainLayerFrame, __main: true, __rel: 0, __order: 0, __id: 'MAIN' });
-    // 主层以上图层
     for (const l of layerList) {
-      if (l.relLayer >= 0) {
-        if (i < l.frames.length) { layers.push({ ...makeLayerFrame(l.frames[i]), __rel: l.relLayer, __order: l.order, __id: l.id }); }
-      }
+      const startFrame = l.order; // order => startFrame
+      const frameIndex = i - startFrame;
+      if (frameIndex < 0 || frameIndex >= l.frames.length) continue;
+      layers.push({ ...makeLayerFrame(l.frames[frameIndex]), __rel: l.relLayer, __order: startFrame, __id: l.id, __start: startFrame });
     }
-    // 按 relLayer, order, 以及是否主层 排序（已按逻辑插入，但再稳固）
-    layers.sort((a,b)=> (a.__rel===b.__rel)? (a.__order - b.__order) : (a.__rel - b.__rel));
+    // 排序：先 __rel (层级)，相同层级内主层优先，然后按出现顺序（不再改变），保持已插入顺序
+    layers.sort((a,b)=> {
+      if (a.__rel === b.__rel) {
+        if (a.__main && !b.__main) return -1;
+        if (b.__main && !a.__main) return 1;
+        return 0; // 保持插入顺序
+      }
+      return a.__rel - b.__rel;
+    });
     timeline.push({
       // 主帧公开字段（沿用 mainLayerFrame + delay + 盒子信息）
       rgba: mainLayerFrame.rgba,
@@ -211,10 +217,11 @@ export async function expandAlsLayers(isPvf: boolean, context: vscode.ExtensionC
     if (!decl) { out?.appendLine(`[ALS] 引用未找到对应声明 id=${add.id}`); continue; }
     if (layerMap.has(add.id)) { out?.appendLine(`[ALS] 重复引用 id=${add.id}，已忽略后续`); continue; }
     const rawPath = decl.path;
-    let aniContent: string | undefined;
+  let aniContent: string | undefined;
+  let candidate: string | undefined;
     try {
       if (isPvf && model) {
-        let candidate = rawPath;
+  candidate = rawPath;
         // 情况1: 以 ./ 或 ../ 开头的相对路径
         if (/^(\.\.\/|\.\/)/.test(rawPath)) {
           candidate = joinAndNormalize(baseDir, rawPath);
@@ -265,7 +272,8 @@ export async function expandAlsLayers(isPvf: boolean, context: vscode.ExtensionC
     if (!aniContent) { continue; }
     const { framesSeq } = parseAniText(aniContent);
     out?.appendLine(`[ALS] 解析附加 ani 成功 id=${add.id} 帧数=${framesSeq.length}`);
-    layerMap.set(add.id, { frames: framesSeq, relLayer: add.relLayer, order: add.order, id: add.id, source: decl.path });
+  // 使用解析后的候选路径（candidate）作为 source，便于后续保存时定位文件；若未解析则回退原始声明路径
+  layerMap.set(add.id, { frames: framesSeq, relLayer: add.relLayer, order: add.order, id: add.id, source: (isPvf ? (candidate||rawPath) : (typeof (aniContent) === 'string' ? (candidate||decl.path) : decl.path)) });
   }
   return layerMap;
 }

@@ -46,7 +46,8 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     albumMap = mainResult.albumMap;
 
     // === 处理同名 .ani.als 附加图层 ===
-    try {
+  let lastAlsMeta: { uses: { id: string; path: string }[]; adds: { id: string; relLayer: number; order: number; kind?: string }[] } | null = null;
+  try {
       const baseDirFs = !isPvfDocument ? require('path').dirname(doc.fileName) : '';
       let alsText: string | undefined;
       let pvfBaseDir = '';
@@ -90,6 +91,10 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
       }
       if (alsText) {
         const parsedAls = parseAlsText(alsText, out);
+        lastAlsMeta = {
+          uses: Array.from(parsedAls.uses.values()).map(u => ({ id: u.id, path: u.path })),
+          adds: parsedAls.adds.map(a => ({ id: a.id, relLayer: a.relLayer, order: a.order, kind: a.kind }))
+        };
         if (parsedAls.adds.length > 0) {
           const layerMap = await expandAlsLayers(isPvfDocument, context, deps.model, root, isPvfDocument ? pvfBaseDir : baseDirFs, parsedAls, out);
           const composite = await buildCompositeTimeline(context, root, framesSeq, parsedAls, layerMap, out);
@@ -104,7 +109,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
 
   if (!timeline || timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
 
-    panel.title = `预览 ANI: ${doc.fileName.split(/[\\/]/).pop()}`;
+  panel.title = `预览 ANI: ${doc.fileName.split(/[\\/]/).pop()}`;
     const localRoots = [
       vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'webview-ui-toolkit', 'dist'),
       context.extensionUri
@@ -116,7 +121,8 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     const toolkitUri = vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'webview-ui-toolkit', 'dist', 'toolkit.js');
     const toolkitSrc = panel.webview.asWebviewUri(toolkitUri).toString();
   const webview = panel.webview;
-  panel.webview.html = buildPreviewHtml(context, webview, timeline, nonce, toolkitSrc);
+  const addsWithSeq = (lastAlsMeta?.adds||[]).map((a,i)=>({id:a.id, relLayer:a.relLayer, order:a.order, kind:a.kind, seq:i}));
+  panel.webview.html = buildPreviewHtml(context, webview, timeline, nonce, toolkitSrc, addsWithSeq, lastAlsMeta?.uses||[], []);
   }
 
   context.subscriptions.push(
@@ -137,7 +143,59 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
       panelsByFile.set(key, panel);
       panel.onDidDispose(() => { panelsByFile.delete(key); }, null, context.subscriptions);
       panel.webview.onDidReceiveMessage(async (msg) => {
-        if (msg && msg.type === 'refresh') { await refreshPreview(fileUri, panel); }
+        if (msg && msg.type === 'refresh') { await refreshPreview(fileUri, panel); return; }
+  if (msg && msg.type === 'saveAls') {
+          try {
+            const uses: any[] = Array.isArray(msg.uses) ? msg.uses : [];
+            const adds: any[] = Array.isArray(msg.adds) ? msg.adds : [];
+            const lines: string[] = ['#PVF_File',''];
+            for (const u of uses) {
+              lines.push('[use animation]','\t`'+u.path+'`','\t`'+u.id+'`','');
+            }
+            for (const a of adds) {
+              const tag = (a.kind === 'none-effect-add') ? '[none effect add]' : (a.kind === 'draw-only' ? '[create draw only object]' : '[add]');
+              const startFrame = (typeof a.start === 'number') ? a.start : a.order; // 兼容旧字段
+              const depth = (typeof a.depth === 'number') ? a.depth : a.relLayer;
+              // 输出顺序: startFrame depth
+              lines.push(tag,'\t'+startFrame+'\t'+depth,'\t`'+a.id+'`','');
+            }
+            const alsContent = lines.join('\r\n');
+            if (fileUri.scheme === 'pvf') {
+              // 目标 key = 主 ani key + '.als'；使用编辑器文本方式（可撤销），不立即写入模型
+              const key = fileUri.path.replace(/^\//,'');
+              const alsKey = key + '.als';
+              const model = deps.model;
+              if (!model.getFileByKey(alsKey)) {
+                model.createEmptyFile(alsKey);
+              }
+              try {
+                const alsUri = vscode.Uri.from({ scheme: 'pvf', path: '/' + alsKey });
+                const doc = await vscode.workspace.openTextDocument(alsUri);
+                const edit = new vscode.WorkspaceEdit();
+                // 全量替换内容，标记为脏，用户可 Ctrl+Z 撤回
+                edit.replace(alsUri, new vscode.Range(0,0, doc.lineCount, 0), alsContent);
+                const applied = await vscode.workspace.applyEdit(edit);
+                if (applied) {
+                  // 打开但不聚焦；然后恢复预览面板焦点
+                  await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true, viewColumn: vscode.ViewColumn.One });
+                  try { panel.reveal(panel.viewColumn ?? vscode.ViewColumn.Two, false); } catch {}
+                  try { deps.deco.refreshUris([alsUri]); } catch {}
+                } else {
+                  vscode.window.showWarningMessage('写入 ALS 文本编辑失败: '+alsKey);
+                }
+              } catch (e:any) {
+                vscode.window.showErrorMessage('打开/编辑 PVF ALS 失败: '+String(e?.message||e));
+              }
+            } else {
+              const fs = await import('fs/promises');
+              const alsPath = fileUri.fsPath + '.als';
+              await fs.writeFile(alsPath, alsContent, 'utf8');
+              vscode.window.showInformationMessage('ALS 已保存: '+alsPath);
+            }
+          } catch (e:any) {
+            vscode.window.showErrorMessage('保存 ALS 失败: '+String(e?.message||e));
+          }
+  }
       }, undefined, context.subscriptions);
       await refreshPreview(fileUri, panel);
       // 再次确保面板在右侧（防止 VS Code 由于布局状态放错）

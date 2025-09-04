@@ -166,6 +166,17 @@ export class PvfModel {
       f.changed = true;
       return true;
     }
+    // .ani.als：按普通文本（与 .ani 相同编码策略）写入，不尝试脚本编译
+    if (lower.endsWith('.ani.als')) {
+      let text = Buffer.from(content).toString('utf8');
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      // 使用 .ani 推导编码
+      const enc = encodingForKey(lower.replace('.ani.als', '.ani'));
+      const encoded = iconv.encode(text, enc);
+      f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
+      f.changed = true;
+      return true;
+    }
     // stringtable.bin：文本视图（index\tvalue） -> 重新构建二进制
     if (lower === 'stringtable.bin') {
       // parse UTF-8 with BOM optionally

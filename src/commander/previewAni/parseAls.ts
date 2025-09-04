@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 
 export interface AlsUseDecl { id: string; path: string; }
+// 语义说明:
+//   文件格式: [add]/[none effect add] 后跟一行: <startFrame> <depth>
+//     - startFrame: 动画开始偏移, 允许为负 (主 ani 第 0 帧之前预滚)
+//     - depth: 相对主 ani 的层级, 主 ani = 0, 正数在上, 负数在下
+//   内部表示: order = startFrame, relLayer = depth
 export interface AlsAddRef { relLayer: number; order: number; id: string; kind?: 'add'|'none-effect-add'|'draw-only'; }
 export interface ParsedAls { uses: Map<string, AlsUseDecl>; adds: AlsAddRef[]; }
 
@@ -20,18 +25,21 @@ export function parseAlsText(text: string, out?: vscode.OutputChannel): ParsedAl
     if (!uses.has(id)) uses.set(id, { id, path: p });
   }
   // [add] 或 [none effect add]
+  // 第一数字 = startFrame -> 存入 order
+  // 第二数字 = depth -> 存入 relLayer
   const addRe = /\[(?:add|none\s+effect\s+add)\]\s*\r?\n+([\s#]*\r?\n+)*\s*(-?\d+)\s+(-?\d+)\s*\r?\n+([\s#]*\r?\n+)*\s*`([^`]+)`/gi;
   while ((m = addRe.exec(text)) !== null) {
-    const rel = parseInt(m[2],10)||0; const ord = parseInt(m[3],10)||0; const id = norm(m[5]);
+    const startFrame = parseInt(m[2],10)||0; const depth = parseInt(m[3],10)||0; const id = norm(m[5]);
     const tag = m[0].match(/\[(add|none\s+effect\s+add)\]/i)?.[1]?.toLowerCase();
-    adds.push({ relLayer: rel, order: ord, id, kind: tag==='none effect add' ? 'none-effect-add':'add' });
+    adds.push({ relLayer: depth, order: startFrame, id, kind: tag==='none effect add' ? 'none-effect-add':'add' });
   }
 
   // [create draw only object]
   const drawOnlyRe = /\[create\s+draw\s+only\s+object\]\s*\r?\n+([\s#]*\r?\n+)*\s*(-?\d+)\s*\r?\n+([\s#]*\r?\n+)*\s*`([^`]+)`/gi;
   while ((m = drawOnlyRe.exec(text)) !== null) {
-    const order = parseInt(m[2],10)||0; const id = norm(m[4]);
-    adds.push({ relLayer: 0, order, id, kind: 'draw-only' });
+  const start = parseInt(m[2],10)||0; const id = norm(m[4]);
+  // draw-only 没有 depth, 设 depth=0
+  adds.push({ relLayer: 0, order: start, id, kind: 'draw-only' });
   }
 
   if (uses.size === 0 && adds.length === 0) {
@@ -56,30 +64,29 @@ export function parseAlsText(text: string, out?: vscode.OutputChannel): ParsedAl
           if (!uses.has(id)) uses.set(id, { id, path: p });
         }
       } else if (line === '[add]' || line === '[none effect add]') {
-        let rel=0, order=0, id='';
+        let startFrame=0, depth=0, id='';
         let j=i+1; while (j<lines.length && lines[j].trim()==='') j++;
         if (j<lines.length) {
           const nums = lines[j].trim().split(/\s+/);
-            if (nums.length>=2) { rel = parseInt(nums[0],10)||0; order = parseInt(nums[1],10)||0; }
+            if (nums.length>=2) { startFrame = parseInt(nums[0],10)||0; depth = parseInt(nums[1],10)||0; }
         }
         j++; while (j<lines.length && lines[j].trim()==='') j++;
         if (j<lines.length) {
           const idMatch = lines[j].trim().match(/^`([^`]+)`$/); if (idMatch) id = norm(idMatch[1]);
         }
-        if (id) adds.push({ relLayer: rel, order, id, kind: line==='[none effect add]'?'none-effect-add':'add' });
+        if (id) adds.push({ relLayer: depth, order: startFrame, id, kind: line==='[none effect add]'?'none-effect-add':'add' });
       } else if (line === '[create draw only object]') {
-        // 结构：单数字(用作 order) -> `id` -> (可选后续行数值忽略)
-        let order=0, id='';
+        // 结构：单数字(作为 startFrame) -> `id`
+        let start=0, id='';
         let j=i+1; while (j<lines.length && lines[j].trim()==='') j++;
-        if (j<lines.length) { const o = parseInt(lines[j].trim(),10); if (!isNaN(o)) order = o; }
+        if (j<lines.length) { const o = parseInt(lines[j].trim(),10); if (!isNaN(o)) start = o; }
         j++; while (j<lines.length && lines[j].trim()==='') j++;
         if (j<lines.length) { const idMatch = lines[j].trim().match(/^`([^`]+)`$/); if (idMatch) id = norm(idMatch[1]); }
-        if (id) adds.push({ relLayer:0, order, id, kind:'draw-only' });
+        if (id) adds.push({ relLayer:0, order:start, id, kind:'draw-only' });
       }
     }
   }
-
-  adds.sort((a,b)=> a.relLayer === b.relLayer ? a.order - b.order : a.relLayer - b.relLayer);
+  // 不再排序: 保留文件出现顺序 (以便保存时不改变顺序)
   out?.appendLine(`[ALS] use animation 声明数: ${uses.size}`);
   const addKinds = adds.reduce((acc, a)=>{ acc[a.kind||'add']=(acc[a.kind||'add']||0)+1; return acc;}, {} as Record<string,number>);
   out?.appendLine(`[ALS] add 引用数: ${adds.length} 细分: ${Object.entries(addKinds).map(([k,v])=>`${k}=${v}`).join(', ')}`);
