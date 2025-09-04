@@ -2,10 +2,11 @@ import * as vscode from 'vscode';
 import { Deps } from './types';
 import * as indexer from '../npk/indexer';
 import { parseAniText } from './previewAni/parseAni';
-import { buildTimelineFromFrames } from './previewAni/buildTimeline';
+import { buildTimelineFromFrames, buildTimelineFromPvfFrames, buildCompositeTimeline, expandAlsLayers } from './previewAni/buildTimeline';
+import { parseAlsText } from './previewAni/parseAls';
 import { buildPreviewHtml } from './previewAni/webviewHtml';
 
-export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps) {
+export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps) {
   // 按文件路径复用面板
   const panelsByFile = new Map<string, vscode.WebviewPanel>();
 
@@ -14,23 +15,94 @@ export function registerPreviewAni(context: vscode.ExtensionContext, _deps: Deps
     const text = doc.getText();
     const cfg = vscode.workspace.getConfiguration();
     let root = (cfg.get<string>('pvf.npkRoot') || '').trim();
-    if (!root) {
+    
+    // 检测文档是否来自PVF
+    const isPvfDocument = fileUri.scheme === 'pvf';
+    
+    if (!isPvfDocument && !root) {
       const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: '请选择NPK根目录' });
       if (!pick || pick.length === 0) { vscode.window.showWarningMessage('未选择 NPK 根目录'); return; }
       root = pick[0].fsPath; await cfg.update('pvf.npkRoot', root, vscode.ConfigurationTarget.Global);
       vscode.window.showInformationMessage(`已设置 NPK 根目录: ${root}`);
     }
-  // ensure index is loaded from disk before attempting to use it
-    try { await indexer.loadIndexFromDisk(context); } catch { }
+    
+    // ensure index is loaded from disk before attempting to use it
+    if (!isPvfDocument) {
+      try { await indexer.loadIndexFromDisk(context); } catch { }
+    }
+    
     const out = vscode.window.createOutputChannel('PVF');
-  // 使用模块化解析与时间轴构建
+    // 使用模块化解析与时间轴构建
 
-  const { framesSeq, groups } = parseAniText(text);
-  if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
+    const { framesSeq, groups } = parseAniText(text);
+    if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
 
-  const { timeline, albumMap } = await buildTimelineFromFrames(context, root, framesSeq, out);
+  let timeline, albumMap;
+    
+    const mainResult = isPvfDocument
+      ? await buildTimelineFromPvfFrames(context, deps.model, root, framesSeq, out)
+      : await buildTimelineFromFrames(context, root, framesSeq, out);
+    timeline = mainResult.timeline;
+    albumMap = mainResult.albumMap;
 
-    if (timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
+    // === 处理同名 .ani.als 附加图层 ===
+    try {
+      const baseDirFs = !isPvfDocument ? require('path').dirname(doc.fileName) : '';
+      let alsText: string | undefined;
+      let pvfBaseDir = '';
+      if (isPvfDocument) {
+        // pvf: key 直接追加 .als，计算主 ani 目录用于相对路径解析
+        const key = fileUri.path.replace(/^\//,'');
+        pvfBaseDir = key.includes('/') ? key.substring(0, key.lastIndexOf('/')) : '';
+        const alsKey = key + '.als';
+        const alsFile = deps.model.getFileByKey(alsKey);
+        if (alsFile) {
+          out.appendLine(`[ALS] 检测到附加层文件: ${alsKey}`);
+          alsText = await deps.model.getTextViewAsync(alsKey);
+          // 如果解析后没有出现 "[use animation]" 且包含不可打印字符，再尝试按 cp949/utf8 直接解码原始字节
+          if (alsText && !/\[use\s+animation\]/i.test(alsText)) {
+            try {
+              const rawBytes = await (deps.model as any).readFileBytes(alsKey);
+              if (rawBytes && rawBytes.length > 0) {
+                const buf = Buffer.from(rawBytes);
+                const tryUtf8 = buf.toString('utf8');
+                if (/\[use\s+animation\]/i.test(tryUtf8)) {
+                  alsText = tryUtf8;
+                  out.appendLine('[ALS] 通过 UTF-8 直接解码成功识别标签');
+                } else {
+                  const iconv = require('iconv-lite');
+                  const try949 = iconv.decode(buf, 'cp949');
+                  if (/\[use\s+animation\]/i.test(try949)) {
+                    alsText = try949;
+                    out.appendLine('[ALS] 通过 cp949 解码成功识别标签');
+                  }
+                }
+              }
+            } catch {}
+          }
+        } else {
+          out.appendLine('[ALS] 未找到同名 .ani.als');
+        }
+      } else {
+        const fs = await import('fs/promises');
+        const alsPath = doc.fileName + '.als';
+        try { await fs.access(alsPath); alsText = await fs.readFile(alsPath, 'utf8'); out.appendLine(`[ALS] 发现并加载 ${alsPath}`); } catch { out.appendLine('[ALS] 未找到同名 .ani.als'); }
+      }
+      if (alsText) {
+        const parsedAls = parseAlsText(alsText, out);
+        if (parsedAls.adds.length > 0) {
+          const layerMap = await expandAlsLayers(isPvfDocument, context, deps.model, root, isPvfDocument ? pvfBaseDir : baseDirFs, parsedAls, out);
+          const composite = await buildCompositeTimeline(context, root, framesSeq, parsedAls, layerMap, out);
+          timeline = composite.timeline; // 覆盖
+          albumMap = composite.albumMap;
+          out.appendLine(`[ALS] 合成完成，主帧数=${timeline.length}`);
+        } else {
+          out.appendLine('[ALS] 没有有效的 add 引用，忽略附加层');
+        }
+      }
+    } catch (e) { out.appendLine(`[ALS] 处理附加层时出错: ${String(e)}`); }
+
+  if (!timeline || timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
 
     panel.title = `预览 ANI: ${doc.fileName.split(/[\\/]/).pop()}`;
     const localRoots = [

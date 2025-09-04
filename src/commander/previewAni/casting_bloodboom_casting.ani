@@ -1,0 +1,48 @@
+#PVF_File
+[FRAME MAX]
+	5
+
+[FRAME000]
+	[IMAGE]
+		`Character/Swordman/Effect/BloodBoom/bloodboom_casting.img`
+		0
+	[IMAGE POS]
+		-361	-447
+	[DELAY]
+		35
+
+[FRAME001]
+	[IMAGE]
+		`Character/Swordman/Effect/BloodBoom/bloodboom_casting.img`
+		1
+	[IMAGE POS]
+		-361	-447
+	[DELAY]
+		35
+
+[FRAME002]
+	[IMAGE]
+		`Character/Swordman/Effect/BloodBoom/bloodboom_casting.img`
+		2
+	[IMAGE POS]
+		-361	-447
+	[DELAY]
+		35
+
+[FRAME003]
+	[IMAGE]
+		`Character/Swordman/Effect/BloodBoom/bloodboom_casting.img`
+		3
+	[IMAGE POS]
+		-361	-447
+	[DELAY]
+		35
+
+[FRAME004]
+	[IMAGE]
+		`Character/Swordman/Effect/BloodBoom/bloodboom_casting.img`
+		4
+	[IMAGE POS]
+		-361	-447
+	[DELAY]
+		35

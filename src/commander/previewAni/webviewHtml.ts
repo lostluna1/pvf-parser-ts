@@ -60,7 +60,6 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
             </div>
             <div class="group">
               <vscode-button id="btnRefresh" title="重新解析 ANI">刷新</vscode-button>
-              <vscode-button id="btnCenter" title="显示原始 [IMAGE POS] 偏移">原始坐标</vscode-button>
             </div>
             <div class="group">
               <label style="display:flex;align-items:center;gap:6px">
@@ -120,7 +119,6 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                const btnPrev=document.getElementById('btnPrev');
                const btnNext=document.getElementById('btnNext');
                const btnRefresh=document.getElementById('btnRefresh');
-               const btnCenter=document.getElementById('btnCenter');
                const speedEl=document.getElementById('speed');
                const zoomEl=document.getElementById('zoom');
                const bgSel=document.getElementById('bgSel');
@@ -137,8 +135,6 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                // camera pan/zoom
                let camX = 0, camY = 0; // in canvas pixels
                let sceneZoom = 1.0;
-               // centered mode: when true, ignore per-frame IMAGE POS (dx,dy) so sprite stays centered
-               let centered = true;
                function applyBg(mode){
                  bgMode = mode || 'dark';
                  canvas.classList.remove('bg-dark','bg-light','bg-checker','bg-transparent');
@@ -155,39 +151,46 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  const ch = Math.max(1, Math.floor(canvas.height / dpr));
                  // ensure transform matches DPR (in case monitor scale changes)
                  try { ctx.setTransform(dpr,0,0,dpr,0,0); } catch {}
-                 const f=timeline[idx];
-                 const imgData=new ImageData(b64ToU8(f.rgba),f.w,f.h);
-                 // apply client-side graphic effects for this frame
-                 try {
-                   if (f.gfx === 'LINEARDODGE') {
-                     const d = imgData.data;
-                     for (let i = 0; i < d.length; i += 4) {
-                       const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
-                       const max = Math.max(r, g, b);
-                       const sub = 255 - max;
-                       const na = Math.min(a, max);
-                       d[i+3] = na;
-                       d[i] = Math.min(255, r + sub);
-                       d[i+1] = Math.min(255, g + sub);
-                       d[i+2] = Math.min(255, b + sub);
-                     }
-                   }
-                   // RGBA tint multiply (per-channel scale) with alpha override
-                   if (f.tint) {
-                     const tr = f.tint[0] / 255, tg = f.tint[1] / 255, tb = f.tint[2] / 255, ta = f.tint[3];
-                     const d = imgData.data;
-                     for (let i = 0; i < d.length; i += 4) {
-                       d[i] = Math.min(255, Math.round(d[i] * tr));
-                       d[i+1] = Math.min(255, Math.round(d[i+1] * tg));
-                       d[i+2] = Math.min(255, Math.round(d[i+2] * tb));
-                       if (!Number.isNaN(ta)) d[i+3] = Math.min(255, Math.round(d[i+3] * (ta / 255)));
-                     }
-                   }
-                 } catch (e) { /* ignore effect failures */ }
-                 // prepare offscreen
-                 if(buf.width!==f.w||buf.height!==f.h){ buf.width=f.w; buf.height=f.h; }
-                 bctx.clearRect(0,0,buf.width,buf.height);
-                 bctx.putImageData(imgData,0,0);
+                     const f=timeline[idx];
+                     const layers = Array.isArray(f.layers) ? f.layers : [f];
+                     const processLayer = (L) => {
+                       const imgData=new ImageData(b64ToU8(L.rgba),L.w,L.h);
+                       try {
+                         if (L.gfx === 'LINEARDODGE') {
+                           const d = imgData.data;
+                           for (let i = 0; i < d.length; i += 4) {
+                             const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+                             const max = Math.max(r, g, b);
+                             const sub = 255 - max;
+                             const na = Math.min(a, max);
+                             d[i+3] = na;
+                             d[i] = Math.min(255, r + sub);
+                             d[i+1] = Math.min(255, g + sub);
+                             d[i+2] = Math.min(255, b + sub);
+                           }
+                         }
+                         if (L.tint) {
+                           const tr = L.tint[0] / 255, tg = L.tint[1] / 255, tb = L.tint[2] / 255, ta = L.tint[3];
+                           const d = imgData.data;
+                           for (let i = 0; i < d.length; i += 4) {
+                             d[i] = Math.min(255, Math.round(d[i] * tr));
+                             d[i+1] = Math.min(255, Math.round(d[i+1] * tg));
+                             d[i+2] = Math.min(255, Math.round(d[i+2] * tb));
+                             if (!Number.isNaN(ta)) d[i+3] = Math.min(255, Math.round(d[i+3] * (ta / 255)));
+                           }
+                         }
+                       } catch {}
+                       if(buf.width!==L.w||buf.height!==L.h){ buf.width=L.w; buf.height=L.h; }
+                       bctx.clearRect(0,0,buf.width,buf.height);
+                       bctx.putImageData(imgData,0,0);
+                       ctx.save();
+                       // 先应用 ANI 坐标 (世界坐标相对 pivot)，再加 sprite 内部偏移 (top-left)
+                       ctx.translate(L.dx, L.dy);
+                       const rot = (L.rot || 0) * Math.PI / 180; if (rot) ctx.rotate(rot);
+                       const sx = (typeof L.sx === 'number' ? L.sx : 1); const sy = (typeof L.sy === 'number' ? L.sy : 1); if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
+                       ctx.drawImage(buf, L.ox|0, L.oy|0);
+                       ctx.restore();
+                     };
                  // draw canvas background so composite modes take effect against it
                  ctx.globalCompositeOperation = 'source-over';
                  if(bgMode==='transparent'){
@@ -209,29 +212,17 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                    ctx.fillStyle = '#111111';
                    ctx.fillRect(0,0,cw,ch);
                  }
-                 // composite with transform: center + camera pan + scene zoom, then frame offset
                  ctx.save();
-                 ctx.globalCompositeOperation = 'source-over';
-                 const baseX = (cw>>1) + camX;
-                 const baseY = (ch>>1) + camY;
-                 ctx.translate(Math.floor(baseX), Math.floor(baseY));
-                 if (sceneZoom !== 1) ctx.scale(sceneZoom, sceneZoom);
-                 // apply per-frame offset only when not centered
-                 const offX = centered ? 0 : f.dx;
-                 const offY = centered ? 0 : f.dy;
-                 ctx.translate(offX, offY);
-                 const rot = (f.rot || 0) * Math.PI / 180;
-                 if (rot) ctx.rotate(rot);
-                 const sx = (typeof f.sx === 'number' ? f.sx : 1);
-                 const sy = (typeof f.sy === 'number' ? f.sy : 1);
-                 if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
-                 ctx.drawImage(buf, Math.floor(-f.w/2), Math.floor(-f.h/2));
+                 const baseX = (cw>>1) + camX; const baseY = (ch>>1) + camY; ctx.translate(Math.floor(baseX), Math.floor(baseY)); if (sceneZoom !== 1) ctx.scale(sceneZoom, sceneZoom);
+                 // 按层顺序绘制
+                 for (const L of layers) { processLayer(L); }
 
                  // overlays: axes and boxes (isometric-ish projection)
                  // Requirement: Z/Y axes base should be at the bottom of the image (bottom center).
                  // We've already translated to image center and applied rotate/scale. Now move origin to bottom center.
                  ctx.save();
-                 ctx.translate(0, Math.floor(f.h/2));
+                 // 轴心即世界 pivot，直接在 (0,0) 位置绘制坐标系与盒子（盒子数值已相对 pivot）
+                 ctx.translate(0,0);
                  const showAxes = toggleAxes ? (toggleAxes.checked !== false) : true;
                  const showAtk = toggleAtk ? (toggleAtk.checked !== false) : true;
                  const showDmg = toggleDmg ? (toggleDmg.checked !== false) : true;
@@ -300,7 +291,6 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                speedEl.addEventListener('input',()=>setSpeed(parseFloat(speedEl.value)));
                zoomEl.addEventListener('input',()=>setZoom(parseFloat(zoomEl.value)));
                bgSel.addEventListener('change',()=>{ applyBg(bgSel.value); drawFrame(); });
-               if (btnCenter) btnCenter.addEventListener('click',()=>{ centered = false; camX = 0; camY = 0; drawFrame(); });
                // toggle overlays should redraw immediately
                if (toggleAxes) toggleAxes.addEventListener('change', ()=> drawFrame());
                if (toggleAtk) toggleAtk.addEventListener('change', ()=> drawFrame());

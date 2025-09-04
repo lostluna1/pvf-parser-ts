@@ -118,8 +118,8 @@ export class PvfModel {
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
-    // .ani：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
-    if (lower.endsWith('.ani') && !f.isScriptFile) {
+  // .ani / .ani.als：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
+  if ((lower.endsWith('.ani') || lower.endsWith('.ani.als')) && !f.isScriptFile) {
       const txt = decompileBinaryAni(f);
       if (txt !== null) {
         const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(txt, 'utf8')]);
@@ -132,7 +132,7 @@ export class PvfModel {
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
     // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
-    if (isTextByExtension(lower)) {
+  if (isTextByExtension(lower) || lower.endsWith('.ani.als')) {
       const sliceForDetect = raw.subarray(0, f.dataLen);
       const enc = detectEncoding(key, sliceForDetect);
       const text = iconv.decode(Buffer.from(sliceForDetect), enc);

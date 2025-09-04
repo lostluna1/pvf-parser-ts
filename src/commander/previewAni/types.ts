@@ -24,6 +24,8 @@ export interface TimelineFrame {
   delay: number;
   dx: number; // IMAGE POS x
   dy: number; // IMAGE POS y
+  ox?: number; // sprite internal offset x within IMG (top-left)
+  oy?: number; // sprite internal offset y within IMG (top-left)
   fid: number; // frame id from IMG album
   gfx?: string;
   sx?: number;
