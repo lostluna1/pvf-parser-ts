@@ -9,7 +9,10 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
     if (!/\.ani$/i.test(doc.fileName)) { vscode.window.showWarningMessage('请在一个 .ani 文件中使用 ANI 编辑器'); return; }
     const text = doc.getText();
 
-    const panel = vscode.window.createWebviewPanel('pvfAniEditor', `ANI 编辑器: ${doc.fileName.split(/[\\/]/).pop()}`, vscode.ViewColumn.Beside, {
+  // 固定源文档在左侧第一列
+  try { await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preserveFocus: true }); } catch {}
+
+  const panel = vscode.window.createWebviewPanel('pvfAniEditor', `ANI 编辑器: ${doc.fileName.split(/[\\/]/).pop()}`, vscode.ViewColumn.Two, {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [
@@ -17,6 +20,8 @@ export function registerAniEditor(context: vscode.ExtensionContext, _deps: Deps)
         context.extensionUri
       ]
     });
+  // 再次显式放到右侧，避免布局变动
+  try { panel.reveal(vscode.ViewColumn.Two, false); } catch {}
 
     const nonce = (() => { let t=''; const s='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for(let i=0;i<32;i++){ t += s.charAt(Math.floor(Math.random()*s.length)); } return t; })();
     const toolkitUri = vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'webview-ui-toolkit', 'dist', 'toolkit.js');

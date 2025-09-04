@@ -15,22 +15,22 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     const text = doc.getText();
     const cfg = vscode.workspace.getConfiguration();
     let root = (cfg.get<string>('pvf.npkRoot') || '').trim();
-    
+
     // 检测文档是否来自PVF
     const isPvfDocument = fileUri.scheme === 'pvf';
-    
+
     if (!isPvfDocument && !root) {
       const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: '请选择NPK根目录' });
       if (!pick || pick.length === 0) { vscode.window.showWarningMessage('未选择 NPK 根目录'); return; }
       root = pick[0].fsPath; await cfg.update('pvf.npkRoot', root, vscode.ConfigurationTarget.Global);
       vscode.window.showInformationMessage(`已设置 NPK 根目录: ${root}`);
     }
-    
+
     // ensure index is loaded from disk before attempting to use it
     if (!isPvfDocument) {
       try { await indexer.loadIndexFromDisk(context); } catch { }
     }
-    
+
     const out = vscode.window.createOutputChannel('PVF');
     // 使用模块化解析与时间轴构建
 
@@ -38,7 +38,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
 
   let timeline, albumMap;
-    
+
     const mainResult = isPvfDocument
       ? await buildTimelineFromPvfFrames(context, deps.model, root, framesSeq, out)
       : await buildTimelineFromFrames(context, root, framesSeq, out);
@@ -123,20 +123,25 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     vscode.commands.registerCommand('pvf.previewAni', async () => {
       const editor = vscode.window.activeTextEditor; if (!editor) { vscode.window.showWarningMessage('没有活动的编辑器'); return; }
       const fileUri = editor.document.uri; const key = fileUri.fsPath.toLowerCase();
+      // 确保源文档固定在左侧(第一组)
+      try { await vscode.window.showTextDocument(editor.document, { viewColumn: vscode.ViewColumn.One, preserveFocus: true }); } catch {}
       const existing = panelsByFile.get(key);
       if (existing) {
-        try { existing.reveal(vscode.ViewColumn.Beside, true); } catch {}
+        // 始终使用右侧文档组 (第二列)
+        try { existing.reveal(vscode.ViewColumn.Two, true); } catch {}
         await refreshPreview(fileUri, existing);
         return;
       }
       // create new panel and wire events
-      const panel = vscode.window.createWebviewPanel('pvfAni', '预览 ANI', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
+      const panel = vscode.window.createWebviewPanel('pvfAni', '预览 ANI', vscode.ViewColumn.Two, { enableScripts: true, retainContextWhenHidden: true });
       panelsByFile.set(key, panel);
       panel.onDidDispose(() => { panelsByFile.delete(key); }, null, context.subscriptions);
       panel.webview.onDidReceiveMessage(async (msg) => {
         if (msg && msg.type === 'refresh') { await refreshPreview(fileUri, panel); }
       }, undefined, context.subscriptions);
       await refreshPreview(fileUri, panel);
+      // 再次确保面板在右侧（防止 VS Code 由于布局状态放错）
+      try { panel.reveal(vscode.ViewColumn.Two, false); } catch {}
     })
   );
 }

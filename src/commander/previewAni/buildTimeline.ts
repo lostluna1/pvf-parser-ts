@@ -22,23 +22,23 @@ export async function buildTimelineFromFrames(context: vscode.ExtensionContext, 
 export async function buildTimelineFromPvfFrames(context: vscode.ExtensionContext, model: PvfModel, root: string, framesSeq: FrameSeqEntry[], out?: vscode.OutputChannel): Promise<{ timeline: TimelineFrame[], albumMap: Map<string, any> }>{
   const albumMap = new Map<string, any>();
   const uniqueImgs = Array.from(new Set(framesSeq.map(f => (f.img || '').trim()).filter(s => s.length > 0)));
-  
+
   // 首先尝试从PVF中解析引用的ANI文件
   const extendedFrames: FrameSeqEntry[] = [];
-  
+
   for (const f of framesSeq) {
     const imgKey = (f.img || '').trim();
-    
+
     // 检查是否是ANI文件引用
     if (imgKey.toLowerCase().includes('.ani')) {
       out?.appendLine(`[PVF] 检测到ANI文件引用: ${imgKey}`);
-      
+
       try {
         const aniContent = await loadAniFromPvf(model, imgKey, out);
         if (aniContent) {
           out?.appendLine(`[PVF] 成功加载ANI文件，开始解析...`);
           const { framesSeq: subFrames } = parseAniText(aniContent);
-          
+
           // 应用当前帧的变换到子帧
           for (const subFrame of subFrames) {
             const combinedFrame: FrameSeqEntry = {
@@ -60,7 +60,7 @@ export async function buildTimelineFromPvfFrames(context: vscode.ExtensionContex
             };
             extendedFrames.push(combinedFrame);
           }
-          
+
           out?.appendLine(`[PVF] ANI文件解析完成，包含 ${subFrames.length} 帧`);
         } else {
           out?.appendLine(`[PVF] 无法加载ANI文件: ${imgKey}，使用原始帧`);
@@ -74,25 +74,25 @@ export async function buildTimelineFromPvfFrames(context: vscode.ExtensionContex
       extendedFrames.push(f);
     }
   }
-  
+
   // 获取所有唯一的IMG文件
   const uniqueImgsFromExtended = Array.from(new Set(extendedFrames.map(f => (f.img || '').trim()).filter(s => s.length > 0 && !s.toLowerCase().includes('.ani'))));
-  
+
   // 从NPK加载IMG资源
   const total = uniqueImgsFromExtended.length || 1; let done = 0;
   await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '查找并加载 IMG 资源…' }, async (p) => {
-    for (const img of uniqueImgsFromExtended) { 
-      const al = await loadAlbumForImage(context, root, img, out); 
-      if (al) albumMap.set(img, al); 
-      done++; 
-      p.report({ increment: (done/total)*100, message: `${done}/${total}` }); 
+    for (const img of uniqueImgsFromExtended) {
+      const al = await loadAlbumForImage(context, root, img, out);
+      if (al) albumMap.set(img, al);
+      done++;
+      p.report({ increment: (done/total)*100, message: `${done}/${total}` });
     }
   });
-  
-  if (uniqueImgsFromExtended.length > 0 && albumMap.size === 0) { 
-    vscode.window.showWarningMessage('未找到任何 IMG 资源，仅显示坐标/碰撞盒。'); 
+
+  if (uniqueImgsFromExtended.length > 0 && albumMap.size === 0) {
+    vscode.window.showWarningMessage('未找到任何 IMG 资源，仅显示坐标/碰撞盒。');
   }
-  
+
   return buildTimelineFromSequence(extendedFrames, albumMap);
 }
 
@@ -215,10 +215,25 @@ export async function expandAlsLayers(isPvf: boolean, context: vscode.ExtensionC
     try {
       if (isPvf && model) {
         let candidate = rawPath;
-  // 以 ./ 或 ../ 开头的相对路径
-          if (/^(\.\.\/|\.\/)/.test(rawPath)) {
+        // 情况1: 以 ./ 或 ../ 开头的相对路径
+        if (/^(\.\.\/|\.\/)/.test(rawPath)) {
           candidate = joinAndNormalize(baseDir, rawPath);
           out?.appendLine(`[ALS] 相对路径解析: base='${baseDir}' raw='${rawPath}' -> '${candidate}'`);
+        } else {
+          // 情况2: 既不以 ./ ../ 开头，也不以 / 开头 -> 视为与主 ani 同级（或其子层级）
+          // 需求: "如果只有文件名或者没有顶级根目录的情况下则代表和主ani是同一个层级的"
+          // 判定: 不以 / 开头，并且 (不含 / 仅文件名) 或 其第一个段不在根级(统一仍按相对处理)
+          if (!rawPath.startsWith('/')) {
+            // bare filename (不含 /) 或者开发者仍希望同级引用 -> 拼接 baseDir
+            if (!rawPath.includes('/')) {
+              candidate = joinAndNormalize(baseDir, './' + rawPath);
+              out?.appendLine(`[ALS] 同级裸文件解析: base='${baseDir}' raw='${rawPath}' -> '${candidate}'`);
+            } else {
+              // 含子目录，但未显式使用 ./ ../，仍按相对处理
+              candidate = joinAndNormalize(baseDir, rawPath);
+              out?.appendLine(`[ALS] 相对子路径解析: base='${baseDir}' raw='${rawPath}' -> '${candidate}'`);
+            }
+          }
         }
         aniContent = await loadAniFromPvf(model, candidate, out);
           if (aniContent && !/\[frame\d{3}\]/i.test(aniContent)) {
