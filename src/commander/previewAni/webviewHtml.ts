@@ -71,6 +71,9 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
               <label style="display:flex;align-items:center;gap:6px">
                 <input id="toggleDmg" type="checkbox" checked /> 受击盒
               </label>
+              <label style="display:flex;align-items:center;gap:6px">
+                <input id="toggleAls" type="checkbox" checked /> ALS图层
+              </label>
             </div>
             <span class="grow"></span>
           </div>
@@ -130,6 +133,7 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                const toggleAxes = document.getElementById('toggleAxes');
                const toggleAtk = document.getElementById('toggleAtk');
                const toggleDmg = document.getElementById('toggleDmg');
+               const toggleAls = document.getElementById('toggleAls');
                let idx=0;let playing=true;let speed=1.0;let timer=null;
                let bgMode = 'dark';
                // camera pan/zoom
@@ -152,7 +156,12 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  // ensure transform matches DPR (in case monitor scale changes)
                  try { ctx.setTransform(dpr,0,0,dpr,0,0); } catch {}
                      const f=timeline[idx];
-                     const layers = Array.isArray(f.layers) ? f.layers : [f];
+                     const allLayers = Array.isArray(f.layers) ? f.layers : [f];
+                     let layers = allLayers;
+                     if (toggleAls && !toggleAls.checked) {
+                       const mainLayer = allLayers.find(l=>l.__main) || allLayers[0];
+                       layers = mainLayer ? [mainLayer] : [];
+                     }
                      const processLayer = (L) => {
                        const imgData=new ImageData(b64ToU8(L.rgba),L.w,L.h);
                        try {
@@ -295,6 +304,7 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                if (toggleAxes) toggleAxes.addEventListener('change', ()=> drawFrame());
                if (toggleAtk) toggleAtk.addEventListener('change', ()=> drawFrame());
                if (toggleDmg) toggleDmg.addEventListener('change', ()=> drawFrame());
+               if (toggleAls) toggleAls.addEventListener('change', ()=> drawFrame());
                // mouse pan + wheel zoom
                let dragging=false, lastX=0, lastY=0;
                canvas.addEventListener('mousedown',(e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; });
