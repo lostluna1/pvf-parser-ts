@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { PvfModel, PvfFileEntry } from './pvf/model';
+import { parseMetadataForKeys } from './pvf/metadata';
 import { PvfProvider } from './pvf/provider';
 import { registerPathLinkProvider } from './pvf/pathLinkProvider';
 import { registerPvfDecorations } from './pvf/decorations';
@@ -10,6 +11,8 @@ import * as path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
+    // 供 metadata.ts 生成图标时访问上下文 (globalStorage)
+    (model as any)._extCtx = context;
     const output = vscode.window.createOutputChannel('PVF');
     const tree = new PvfProvider(model, output);
     const deco = registerPvfDecorations(context, model);
@@ -110,6 +113,23 @@ export function activate(context: vscode.ExtensionContext) {
                 model.updateFileData(key, content);
                 this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
                 deco.refreshUris([uri]);
+                // 异步重新解析 [name]/[icon]，以及 .lst 代码映射
+                (async () => {
+                    try {
+                        await parseMetadataForKeys(model, [key]);
+                    } catch {}
+                    try {
+                        if (key.toLowerCase().endsWith('.lst')) {
+                            // 重建 lst 索引（私有方法反射调用）
+                            const anyModel: any = model as any;
+                            if (typeof anyModel.buildListFileIndices === 'function') {
+                                await anyModel.buildListFileIndices();
+                            }
+                        }
+                    } catch {}
+                    // 刷新树以更新描述和动态图标
+                    try { tree.refresh(); } catch {}
+                })();
             }
             delete(): void { /* implement if needed */ }
             rename(): void { /* implement if needed */ }

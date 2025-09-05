@@ -28,7 +28,7 @@ export class PvfProvider implements vscode.TreeDataProvider<PvfFileEntry> {
   const uri = vscode.Uri.parse(`pvf:/${element.key}`);
   // 为文件和文件夹都设置 resourceUri，便于文件装饰向父级传播
   item.resourceUri = uri;
-    if (element.isFile) {
+  if (element.isFile) {
       const icon = getIconForFile(element.name);
       if (icon) {
         // 运行时通过扩展上下文相对路径定位；这里暂用全路径会在 activate 中补充 context 传入或使用 asExternalUri
@@ -44,6 +44,15 @@ export class PvfProvider implements vscode.TreeDataProvider<PvfFileEntry> {
           }
         } catch { /* ignore */ }
       }
+      // 如果 metadata 生成了专属 icon (IMG 指定帧)，优先使用
+      try {
+        const store: Map<string, any> | undefined = (this.model as any)._fileIconMeta;
+        const rec = store ? store.get(element.key) : undefined;
+        if (rec && rec.pngPath) {
+          const pngUri = vscode.Uri.file(rec.pngPath);
+          item.iconPath = { light: pngUri, dark: pngUri };
+        }
+      } catch { /* ignore */ }
       // 附加显示：脚本显示名 + <代码>
       const cfg = vscode.workspace.getConfiguration();
       const showName = cfg.get<boolean>('pvf.showScriptDisplayName', true);
