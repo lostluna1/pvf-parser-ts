@@ -30,16 +30,10 @@ if ((iconTheme as any)['x-multiExtensions']) {
   }
 }
 
-// 可以在这里追加仅用于 TreeView 的额外扩展（不影响标签主题）
-const extraForTree = ['.skl', '.txt', '.cfg', '.def', '.inc', '.xml', '.bin', '.dds', '.png', '.jpg', '.jpeg', '.tga'];
-for (const ext of extraForTree) {
-  if (!map[ext]) {
-    // 暂无专用图标时可复用某个通用图标(这里沿用 text.png / image.png / bin.png 等策略)
-    if (['.png', '.jpg', '.jpeg', '.tga', '.dds'].includes(ext)) map[ext] = 'image.png';
-    else if (ext === '.bin') map[ext] = 'bin.png';
-    else map[ext] = 'text.png';
-  }
-}
+// 需求更新：除 ani/lst/str/als(.ani.als) 外全部使用统一占位图标
+const PLACEHOLDER = 'icons8-placeholder-thumbnail-xml-28.png';
+// 记录已有专用扩展，其余在 getIconForFile 中返回占位
+const dedicatedExts = new Set(Object.keys(map));
 
 export const extensionIconMap: Record<string, string> = map;
 
@@ -56,7 +50,8 @@ export function getIconForFile(name: string): string | undefined {
   const lastDot = lower.lastIndexOf('.');
   if (lastDot !== -1) {
     const ext = lower.substring(lastDot);
-    return extensionIconMap[ext];
+    if (extensionIconMap[ext]) return extensionIconMap[ext];
   }
-  return undefined;
+  // 其它一律占位
+  return PLACEHOLDER;
 }

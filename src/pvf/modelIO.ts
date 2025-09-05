@@ -39,6 +39,7 @@ export async function openImpl(this: any, filePath: string, progress?: any) {
     this.fileList.set(pf.fileName, pf);
     if (progress && i % 512 === 0) progress(Math.floor((i / fileCount) * 50));
   }
+  if (progress) progress(50); // 确保文件列表阶段结束后显示 50%
   this.baseOffset = pos; // remember where data section starts
   await fd.close();
 
@@ -52,6 +53,7 @@ export async function openImpl(this: any, filePath: string, progress?: any) {
   } catch {
     // ignore, decompile will fallback partially
   }
+  if (progress) progress(50); // string 资源加载完成，保持 50%
 }
 
 export async function saveImpl(this: any, filePath: string, progress?: any) {

@@ -12,13 +12,17 @@
         },
         "aniAls": {
             "iconPath": "./icons/icons8-层-48.png"
+        },
+        "defaultPvf": {
+            "iconPath": "./icons/icons8-placeholder-thumbnail-xml-28.png"
         }
     },
+    "file": "defaultPvf",
     "fileExtensions": {
         "ani": "ani",
         "lst": "lst",
         "str": "str",
-        "als": "aniAls"
+    "als": "aniAls"
     },
     "x-multiExtensions": {
         ".ani.als": "./icons/icons8-层-48.png"

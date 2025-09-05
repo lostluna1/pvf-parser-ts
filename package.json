@@ -23,6 +23,21 @@
           "type": "string",
           "default": "",
           "description": "NPK 文件根目录（通常为游戏目录下的 ImagePacks2）。"
+        },
+        "pvf.showScriptDisplayName": {
+          "type": "boolean",
+          "default": true,
+          "description": "在 PVF 资源树中文件后追加脚本显示名（来自 .lst 解析）。"
+        },
+        "pvf.showScriptCode": {
+          "type": "boolean",
+          "default": true,
+          "description": "在 PVF 资源树中文件后追加 <代码>（来自 .lst 解析）。"
+        },
+        "pvf.metadata.excludeExtensions": {
+          "type": "string",
+          "default": ".nut,.lst,.ani,.ani.als,.als,.ui,.png,.jpg,.jpeg,.dds,.bmp,.tga,.gif,.wav,.ogg,.mp3,.bin",
+          "description": "解析 [name] 标签时要排除的扩展名（逗号/空格/分号分隔）。其他所有文件都会扫描其文本前 32KB 是否含 [name]。"
         }
       }
     },

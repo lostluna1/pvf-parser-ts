@@ -11,6 +11,7 @@ import { decompileBinaryAni } from './binaryAni';
 import { encodingForKey, isTextByExtension, detectEncoding, isTextEncoding, isPrintableText, formatListText } from './helpers';
 import { getFileNameHashCode as utilGetFileNameHashCode, renderStringTableText as utilRenderStringTableText } from './util';
 import { decompileScript } from './scriptDecompiler';
+import { buildMetadataMaps, parseMetadataForKeys } from './metadata';
 
 export interface Progress { (n: number): void }
 
@@ -33,14 +34,34 @@ export class PvfModel {
   private encodingCache = new Map<string, string>(); // key -> detected encoding used on last read/write
   private strtable?: StringTable;
   private strview?: StringView;
+  // 映射：文件完整 key -> 代码 / 脚本显示名
+  private fileCodeMap = new Map<string, number>();
+  private fileDisplayNameMap = new Map<string, string>();
 
-  async open(filePath: string, progress?: Progress) { return openImpl.call(this, filePath, progress); }
+  async open(filePath: string, progress?: Progress) {
+    await openImpl.call(this, filePath, progress);
+    // 构建 .lst 解析索引（依赖 stringtable 已在 openImpl 内尝试加载）
+    try { if (progress) progress(55); await this.buildListFileIndices(); if (progress) progress(70); } catch { /* ignore parsing errors */ }
+  // 取消启动时全量 metadata 解析，改为懒加载（文件夹展开时按需解析）
+  if (progress) progress(100);
+  }
 
   // helpers for StringView
   public getStringFromTable(index: number): string | undefined { return this.strtable?.get(index); }
   public getFileByKey(key: string): PvfFile | undefined { return this.fileList.get(key); }
   public getStringView(): StringView | undefined { return this.strview; }
   public async loadFileData(f: PvfFile): Promise<Uint8Array> { return await readAndDecryptImpl.call(this, f); }
+
+  // 对外提供代码/显示名查询
+  public getCodeForFile(key: string): number { return this.fileCodeMap.get(key) ?? -1; }
+  public getDisplayNameForFile(key: string): string | undefined { return this.fileDisplayNameMap.get(key); }
+  // 供 metadata 构建调用，若已存在 lst 提供的名称则 metadata 覆盖
+  public setDisplayName(key: string, name: string) { this.fileDisplayNameMap.set(key, name); }
+
+  // 懒解析：提供一个针对一批文件 key 的解析接口（由 provider 调用）
+  public async ensureMetadataForFiles(keys: string[]) {
+    await parseMetadataForKeys(this, keys);
+  }
 
   async save(filePath: string, progress?: Progress) { return saveImpl.call(this, filePath, progress); }
 
@@ -118,8 +139,8 @@ export class PvfModel {
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
-  // .ani / .ani.als / .als：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
-  if ((lower.endsWith('.ani') || lower.endsWith('.ani.als') || lower.endsWith('.als')) && !f.isScriptFile) {
+    // .ani / .ani.als / .als：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
+    if ((lower.endsWith('.ani') || lower.endsWith('.ani.als') || lower.endsWith('.als')) && !f.isScriptFile) {
       const txt = decompileBinaryAni(f);
       if (txt !== null) {
         const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(txt, 'utf8')]);
@@ -132,7 +153,7 @@ export class PvfModel {
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
     // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
-  if (isTextByExtension(lower) || lower.endsWith('.ani.als') || lower.endsWith('.als')) {
+    if (isTextByExtension(lower) || lower.endsWith('.ani.als') || lower.endsWith('.als')) {
       const sliceForDetect = raw.subarray(0, f.dataLen);
       const enc = detectEncoding(key, sliceForDetect);
       const text = iconv.decode(Buffer.from(sliceForDetect), enc);
@@ -208,7 +229,7 @@ export class PvfModel {
         return true;
       }
     }
-  // 如果文本以 #PVF_File 开头，也按脚本编译（应对某些最初未识别为脚本的情况）
+    // 如果文本以 #PVF_File 开头，也按脚本编译（应对某些最初未识别为脚本的情况）
     {
       const prefix = Buffer.from(content.subarray(0, Math.min(16, content.length))).toString('utf8');
       if (prefix.startsWith('#PVF_File')) {
@@ -430,6 +451,46 @@ export class PvfModel {
   // Return a list of all file keys in the pack
   public getAllKeys(): string[] {
     return Array.from(this.fileList.keys());
+  }
+
+  /**
+   * 解析所有 .lst 文件，将其中 (代码, 名称索引) -> 目标脚本文件 的映射建立到 fileCodeMap/fileDisplayNameMap。
+   * 结构参考 pvfUtility：从偏移 2 开始，每 10 字节一项：
+   * [0]=flag? [1..4]=code (LE int32) [5]=flag2? [6..9]=nameIndex (LE int32)
+   * 名称索引用 stringtable 查出字符串，与 .lst 所在目录拼接成文件 key。
+   */
+  private async buildListFileIndices(): Promise<void> {
+    this.fileCodeMap.clear();
+    this.fileDisplayNameMap.clear();
+    if (!this.strtable) return; // 需要 stringtable
+    for (const [key, f] of this.fileList.entries()) {
+      if (!key.endsWith('.lst')) continue;
+      try {
+        const data = await this.readAndDecrypt(f);
+        const len = f.dataLen;
+        if (len < 12) continue;
+        const basePath = (() => {
+          const idx = key.lastIndexOf('/');
+          return idx >= 0 ? key.substring(0, idx + 1) : '';
+        })();
+        // 从偏移 2 开始逐条 10 字节记录
+        for (let i = 2; i + 10 <= len; i += 10) {
+          const code = (data[i + 1]) | (data[i + 2] << 8) | (data[i + 3] << 16) | (data[i + 4] << 24);
+          const nameIdx = (data[i + 6]) | (data[i + 7] << 8) | (data[i + 8] << 16) | (data[i + 9] << 24);
+          if (code < 0 || nameIdx < 0) continue;
+          const name = this.strtable.get(nameIdx);
+          if (!name) continue;
+          const fileKey = (basePath + name).replace(/\\/g, '/').toLowerCase();
+          // 只在目标文件实际存在且是脚本/ani 之类时记录（不过 pvfUtility 只判断脚本，这里保持宽松）
+          if (this.fileList.has(fileKey)) {
+            this.fileCodeMap.set(fileKey, code);
+            this.fileDisplayNameMap.set(fileKey, name);
+          }
+        }
+      } catch {
+        // 单个 .lst 解析失败忽略
+      }
+    }
   }
 
   // Find references to a file key or base filename across script/stringtable/text/.ani files

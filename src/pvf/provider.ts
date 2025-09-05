@@ -7,6 +7,10 @@ export class PvfProvider implements vscode.TreeDataProvider<PvfFileEntry> {
   private _onDidChangeTreeData = new vscode.EventEmitter<PvfFileEntry | undefined | void>();
   onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  // 监听展开事件以进行懒解析
+  private disposables: vscode.Disposable[] = [];
+  private _metadataRequested = new Set<string>();
+
   constructor(private model: PvfModel, private output?: vscode.OutputChannel) {}
 
   refresh(): void {
@@ -40,6 +44,18 @@ export class PvfProvider implements vscode.TreeDataProvider<PvfFileEntry> {
           }
         } catch { /* ignore */ }
       }
+      // 附加显示：脚本显示名 + <代码>
+      const cfg = vscode.workspace.getConfiguration();
+      const showName = cfg.get<boolean>('pvf.showScriptDisplayName', true);
+      const showCode = cfg.get<boolean>('pvf.showScriptCode', true);
+      if (showName || showCode) {
+        const code = (this.model as any).getCodeForFile ? (this.model as any).getCodeForFile(element.key) : -1;
+        const disp = (this.model as any).getDisplayNameForFile ? (this.model as any).getDisplayNameForFile(element.key) : undefined;
+        let parts: string[] = [];
+        if (showName && disp) parts.push(disp);
+        if (showCode && code !== -1) parts.push(`<${code}>`);
+        if (parts.length) item.description = parts.join(' ');
+      }
     }
   if (element.isFile) item.command = { command: 'pvf.openFile', title: '打开', arguments: [element] };
     return item;
@@ -51,6 +67,16 @@ export class PvfProvider implements vscode.TreeDataProvider<PvfFileEntry> {
     const result = !element ? this.model.getChildren() : (!element.isFile ? this.model.getChildren(element.key) : []);
     const ms = Date.now() - start;
     this.output?.appendLine(`[PVF] get${label} -> ${Array.isArray(result) ? result.length : 0} items in ${ms}ms`);
+    // 懒解析：对本层的文件 keys 执行一次 metadata 解析（异步，不阻塞首次显示）
+    if (result.length) {
+      const fileKeys = result.filter(r=>r.isFile).map(r=>r.key).filter(k=>!this._metadataRequested.has(k));
+      if (fileKeys.length) {
+        fileKeys.forEach(k=>this._metadataRequested.add(k));
+        this.model.ensureMetadataForFiles(fileKeys).then(()=>{
+          this._onDidChangeTreeData.fire();
+        }).catch(()=>{});
+      }
+    }
     return Promise.resolve(result);
   }
 }
