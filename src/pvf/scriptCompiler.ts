@@ -5,21 +5,62 @@ export class ScriptCompiler {
   compile(scriptText: string): Buffer | null {
     try {
       scriptText = scriptText.replace(/<(\d+::.+?)`.+?`>/g, '<$1``>');
-      const out: number[] = [];
-      out.push(0xB0, 0xD0);
-      const lines = scriptText.split(/\r?\n/);
-      for (const lineRaw of lines) {
-        const line = lineRaw.trimEnd();
-        const hdr = line.trim();
-        if (!hdr || hdr.toLowerCase() === '#pvf_file' || hdr.toLowerCase() === '#pvf_file_add') continue;
-        const parts = line.split('\t').filter(s => s.length > 0);
-        for (const part of parts) {
-          const items = this.compileItem(part);
-          for (const [t, v] of items) {
+      const out: number[] = [0xB0, 0xD0];
+      // 统一换行
+      const normalized = scriptText.replace(/\r\n?|\u2028|\u2029/g, '\n');
+      const lines = normalized.split('\n');
+      let i = 0;
+      while (i < lines.length) {
+        let line = lines[i];
+        const trimmed = line.trim();
+        if (!trimmed || /^#pvf_file(_add)?$/i.test(trimmed)) { i++; continue; }
+        // 逐字符扫描，支持多行反引号串与制表分隔 token
+        let pos = 0;
+        const len = line.length;
+        const emitToken = (token: string) => {
+          if (!token) return;
+          const items = this.compileItem(token);
+            for (const [t, v] of items) {
             out.push(t & 0xFF);
             out.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF);
           }
+        };
+        while (true) {
+          // 跳过制表/前导空白（空白不作为分隔符只认制表；但前导空白在 token 中意义不大这里忽略）
+          while (pos < line.length && line[pos] === '\t') pos++;
+          if (pos >= line.length) break;
+          if (line[pos] === '`') {
+            // 多行字符串
+            let token = '`';
+            pos++;
+            let closed = false;
+            let curLine = line;
+            while (true) {
+              while (pos < curLine.length) {
+                const ch = curLine[pos++];
+                token += ch;
+                if (ch === '`') { closed = true; break; }
+              }
+              if (closed) break;
+              // 下一行继续
+              i++;
+              if (i >= lines.length) break; // 非正常闭合，直接退出
+              curLine = lines[i];
+              token += '\n';
+              pos = 0;
+            }
+            // 如果闭合所在行还有剩余，继续在同一逻辑里处理余下部分
+            line = curLine; // 确保 line 指向包含闭合的行，继续扫描后续 token
+            emitToken(token);
+            continue;
+          }
+          // 普通 token：直到 \t 或 行终止
+          let start = pos;
+          while (pos < line.length && line[pos] !== '\t') pos++;
+          const raw = line.slice(start, pos).trim();
+          if (raw) emitToken(raw);
         }
+        i++;
       }
       return Buffer.from(out);
     } catch {

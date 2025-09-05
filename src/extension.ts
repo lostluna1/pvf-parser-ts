@@ -116,6 +116,12 @@ export function activate(context: vscode.ExtensionContext) {
                 // 异步重新解析 [name]/[icon]，以及 .lst 代码映射
                 (async () => {
                     try {
+                        // 清除元数据扫描缓存，确保重新解析
+                        try { (model as any)._metadataScannedFiles?.delete(key); } catch {}
+                        // 清除已生成的图标缓存，下次生成使用新内容
+                        try { (model as any)._fileIconMeta?.delete(key); } catch {}
+                        // 清除旧显示名（若内容改动删除了 [name]）
+                        try { (model as any).fileDisplayNameMap?.delete(key); } catch {}
                         await parseMetadataForKeys(model, [key]);
                     } catch {}
                     try {

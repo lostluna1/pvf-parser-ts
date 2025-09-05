@@ -22,66 +22,134 @@ export function decompileScript(model: any, f: PvfFile): string {
   const getStr = (idx: number) => model.getStringFromTable(idx) ?? `#${idx}`;
   const getStrLink = (id: number, nameIdx: number) => model.getStringView()?.get(id, getStr(nameIdx)) ?? '';
 
+  // 仅把 type==5 视为章节，避免把普通字符串值(如 "[passive]")误判成章节。
+  const isSection = (t: number, v: number): boolean => {
+    if (t === 5) return true;
+    return false;
+  };
+
+  const formatNumberToken = (t: number, v: number): string => {
+    if (t === 4) {
+      const f32 = new DataView(new Uint32Array([v]).buffer).getFloat32(0, true);
+      return formatFloat(f32);
+    }
+    const s32 = new DataView(new Uint32Array([v]).buffer).getInt32(0, true);
+    return String(s32);
+  };
+
   let i = 0;
+  let currentSection: string | null = null;
+  let indentLevel = 0; // container depth only
+  let firstSection = false;
+  const containerSections = new Set<string>([
+    '[dungeon]','[pvp]','[death tower]','[warroom]'
+  ]);
+  const sectionStack: string[] = []; // stack of container section names (lowercase)
+
+  const floatForSection = (sec: string | null, n: number): string => {
+    const s = new DataView(new Uint32Array([n]).buffer).getFloat32(0, true);
+    if (sec === '[level property]') {
+      // 保留整数浮点的 .0
+      if (Number.isInteger(s)) return s.toFixed(1);
+    }
+    return formatFloat(s);
+  };
+
+  const emitLine = (content: string, extraIndent = 0) => {
+    sb.push('\t'.repeat(indentLevel + extraIndent) + content);
+  };
+
   while (i < items.length) {
     const { t, v } = items[i];
-    // Section tag (heuristic: type==5 or stringtable returns bracketed tag)
-    if (t === 5 || (model.getStringFromTable && getStr(v).startsWith('['))) {
-      sb.push('');
-      sb.push(getStr(v));
-      i++;
-      while (i < items.length) {
-        const nt = items[i].t;
-        const nv = items[i].v;
-        if (nt === 5 || (model.getStringFromTable && getStr(nv).startsWith('['))) break;
-        if (nt === 9 && i + 1 < items.length && items[i + 1].t === 10) {
-          const name = getStr(items[i + 1].v);
-          const val = getStrLink(nv, items[i + 1].v);
-          sb.push(`\t\`${val || ''}\``);
-          i += 2;
-          continue;
+    if (isSection(t, v)) {
+      const name = getStr(v);
+      const nameLower = name.toLowerCase();
+      const closing = name.startsWith('[/');
+      if (closing) {
+        // map closing '[/xxx]' -> '[xxx]'
+        const openName = '[' + nameLower.slice(2);
+        if (sectionStack.length && sectionStack[sectionStack.length - 1] === openName) {
+          // reduce indent BEFORE printing closing at same level as its opener
+          indentLevel = Math.max(0, indentLevel - 1);
+          sectionStack.pop();
         }
-        if (nt === 7) {
-          sb.push(`\t\`${getStr(nv)}\``);
-          i++;
-          continue;
-        }
-        const line: string[] = [];
-        while (i < items.length) {
-          const kt = items[i].t;
-          const kv = items[i].v;
-          if (kt === 5 || kt === 7 || kt === 9) break;
-          if (kt === 4) {
-            const f32 = new DataView(new Uint32Array([kv]).buffer).getFloat32(0, true);
-            line.push(formatFloat(f32));
-          } else {
-            // print as signed 32-bit
-            const s32 = new DataView(new Uint32Array([kv]).buffer).getInt32(0, true);
-            line.push(String(s32));
-          }
-          i++;
-        }
-        if (line.length) sb.push('\t' + line.join('\t'));
+        if (!firstSection) { sb.push(''); firstSection = true; }
+        else if (indentLevel === 0) { sb.push(''); }
+        emitLine(name);
+        // leaving a section: reset leaf section context
+        currentSection = null;
+        i++; continue;
       }
+      // opening section
+      if (!firstSection) { sb.push(''); firstSection = true; }
+      else if (indentLevel === 0) { sb.push(''); }
+      emitLine(name);
+      currentSection = nameLower; // leaf context
+      if (containerSections.has(nameLower)) {
+        indentLevel++;
+        sectionStack.push(nameLower);
+      }
+      i++; continue;
+    }
+
+    // 特殊 [command]：一条一个 token (6 / 8) 或常规字符串/链接
+    if (currentSection === '[command]') {
+      if (t === 6 || t === 8) {
+        const strVal = getStr(v);
+        if (strVal.startsWith('#')) {
+          const signed = new DataView(new Uint32Array([v]).buffer).getInt32(0, true);
+          emitLine('{' + t + '=' + signed + '}', 1);
+        } else {
+          emitLine('{' + t + '=`' + strVal + '`}', 1);
+        }
+        i++; continue;
+      }
+      if (t === 7) {
+        emitLine('`' + getStr(v) + '`', 1); i++; continue;
+      }
+      if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
+        const val = getStrLink(v, items[i + 1].v) || getStr(items[i + 1].v);
+        emitLine('`' + val + '`', 1); i += 2; continue;
+      }
+      // 其它数字：聚合一行
+      const nums: string[] = [];
+      while (i < items.length && !isSection(items[i].t, items[i].v)) {
+        const it = items[i];
+        if (it.t === 6 || it.t === 7 || it.t === 8 || it.t === 9) break;
+        nums.push(formatNumberToken(it.t, it.v)); i++;
+      }
+      if (nums.length) emitLine(nums.join('\t'), 1);
       continue;
     }
-    if (t === 7) {
-      sb.push(`\t\`${getStr(v)}\``);
-    } else if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
-      const name = getStr(items[i + 1].v);
-      const val = getStrLink(v, items[i + 1].v);
-      sb.push(`\t\`${val || ''}\``);
-      i++;
-    } else {
-      if (t === 4) {
-        const f32 = new DataView(new Uint32Array([v]).buffer).getFloat32(0, true);
-        sb.push(formatFloat(f32));
-      } else {
-        const s32 = new DataView(new Uint32Array([v]).buffer).getInt32(0, true);
-        sb.push(String(s32));
-      }
+
+    // string link 9+10
+    if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
+      const val = getStrLink(v, items[i + 1].v) || getStr(items[i + 1].v);
+      emitLine('`' + val + '`', 1); i += 2; continue;
     }
-    i++;
+    // string 7 + 后续数字
+    if (t === 7) {
+      const strVal = getStr(v);
+      let j = i + 1; const nums: string[] = [];
+      while (j < items.length) {
+        const jt = items[j].t;
+        if (isSection(jt, items[j].v) || jt === 7 || jt === 9) break;
+        if (jt === 4) nums.push(floatForSection(currentSection, items[j].v)); else nums.push(formatNumberToken(jt, items[j].v));
+        j++;
+      }
+      if (nums.length) emitLine('`' + strVal + '`\t' + nums.join('\t'), 1);
+      else emitLine('`' + strVal + '`', 1);
+      i = j; continue;
+    }
+    // 纯数字行（聚合直到控制 token）
+    const line: string[] = [];
+    while (i < items.length) {
+      const kt = items[i].t; const kv = items[i].v;
+      if (isSection(kt, kv) || kt === 7 || kt === 9) break;
+      if (kt === 4) line.push(floatForSection(currentSection, kv)); else line.push(formatNumberToken(kt, kv));
+      i++;
+    }
+    if (line.length) emitLine(line.join('\t'), 1);
   }
   return sb.join('\n');
 }

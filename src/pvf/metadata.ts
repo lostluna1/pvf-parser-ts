@@ -82,13 +82,30 @@ export function parseScriptMetadata(text: string): FileMetaInfo {
 		if (key === 'name') meta.name = body;
 		else if (key === 'name2') meta.name2 = body;
 		else if (key === 'icon') {
-			// lines: path / frame / path / frame ... 仅取第一组
-			const lines = body.split(/\n+/).map(s=>s.trim()).filter(Boolean);
-			for (let i=0; i+1<lines.length; i+=2) {
-				let p = lines[i];
-				if ((p.startsWith('`') && p.endsWith('`')) || (/^['"].+['"]$/.test(p))) p = p.slice(1,-1);
-				const frame = parseInt(lines[i+1], 10);
-				if (p && Number.isFinite(frame)) { meta.icon = { img: p, frame }; break; }
+			// 允许两种格式：
+			// 1) 分行: `path`\n 60 \n `path2` \n 61 ...
+			// 2) 同行: `path` <tab/space> 60  (只取第一组)
+			const rawLines = body.split(/\n+/);
+			const lines = rawLines.map(s=>s.trim()).filter(Boolean);
+			// 先尝试单行匹配
+			for (const ln of lines) {
+				// 示例: `Character/Common/SkillIcon.img`\t60
+				const m1 = ln.match(/^([`'\"])(.+?\.img)\1\s+(\d+)/i) || ln.match(/^(.+?\.img)\s+(\d+)$/i);
+				if (m1) {
+					const pathRaw = m1[2] || m1[1];
+					const frameStr = m1[m1.length-1];
+					const frame = parseInt(frameStr, 10);
+					if (pathRaw && Number.isFinite(frame)) { meta.icon = { img: pathRaw, frame }; break; }
+				}
+			}
+			// 若未匹配到，再按旧的成对行逻辑
+			if (!meta.icon) {
+				for (let i=0; i+1<lines.length; i+=2) {
+					let p = lines[i];
+					if ((p.startsWith('`') && p.endsWith('`')) || (/^['"].+['"]$/.test(p))) p = p.slice(1,-1);
+					const frame = parseInt(lines[i+1], 10);
+					if (p && Number.isFinite(frame)) { meta.icon = { img: p, frame }; break; }
+				}
 			}
 		}
 		else if (key) {
