@@ -88,6 +88,7 @@ export function activate(context: vscode.ExtensionContext) {
         out.appendLine(msg);
     }));
 
+
     context.subscriptions.push(
         // Provide editable virtual FS for pvf: scheme
         vscode.workspace.registerFileSystemProvider('pvf', new (class implements vscode.FileSystemProvider {

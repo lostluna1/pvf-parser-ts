@@ -153,11 +153,17 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
               lines.push('[use animation]','\t`'+u.path+'`','\t`'+u.id+'`','');
             }
             for (const a of adds) {
-              const tag = (a.kind === 'none-effect-add') ? '[none effect add]' : (a.kind === 'draw-only' ? '[create draw only object]' : '[add]');
+              const isDrawOnly = a.kind === 'draw-only';
+              const tag = (a.kind === 'none-effect-add') ? '[none effect add]' : (isDrawOnly ? '[create draw only object]' : '[add]');
               const startFrame = (typeof a.start === 'number') ? a.start : a.order; // 兼容旧字段
               const depth = (typeof a.depth === 'number') ? a.depth : a.relLayer;
-              // 输出顺序: startFrame depth
-              lines.push(tag,'\t'+startFrame+'\t'+depth,'\t`'+a.id+'`','');
+              if (isDrawOnly) {
+                // draw-only 语法只有一个数字 (startFrame)
+                lines.push(tag,'\t'+startFrame,'\t`'+a.id+'`','');
+              } else {
+                // add / none effect add: 两个数字 start depth
+                lines.push(tag,'\t'+startFrame+'\t'+depth,'\t`'+a.id+'`','');
+              }
             }
             const alsContent = lines.join('\r\n');
             if (fileUri.scheme === 'pvf') {

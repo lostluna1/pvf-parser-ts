@@ -8,6 +8,7 @@ import { ScriptCompiler } from './scriptCompiler';
 import { StringView } from './stringView';
 import { openImpl, saveImpl, readAndDecryptImpl } from './modelIO';
 import { decompileBinaryAni } from './binaryAni';
+import { compileBinaryAni } from './aniCompiler';
 import { encodingForKey, isTextByExtension, detectEncoding, isTextEncoding, isPrintableText, formatListText } from './helpers';
 import { getFileNameHashCode as utilGetFileNameHashCode, renderStringTableText as utilRenderStringTableText } from './util';
 import { decompileScript } from './scriptDecompiler';
@@ -37,13 +38,16 @@ export class PvfModel {
   // 映射：文件完整 key -> 代码 / 脚本显示名
   private fileCodeMap = new Map<string, number>();
   private fileDisplayNameMap = new Map<string, string>();
+  // 记录文本文件原始信息（目前用于 .ani.als / .als 原样写回）
+  private originalTextMeta = new Map<string, { encoding: string; newline: string; hadBom: boolean; finalNewline: boolean }>();
+  private originalAlsBytes = new Map<string, Uint8Array>(); // 保存首次读取到的原始 ALS 字节（解密后原始，不含我们再解码重编码）
 
   async open(filePath: string, progress?: Progress) {
     await openImpl.call(this, filePath, progress);
     // 构建 .lst 解析索引（依赖 stringtable 已在 openImpl 内尝试加载）
     try { if (progress) progress(55); await this.buildListFileIndices(); if (progress) progress(70); } catch { /* ignore parsing errors */ }
-  // 取消启动时全量 metadata 解析，改为懒加载（文件夹展开时按需解析）
-  if (progress) progress(100);
+    // 取消启动时全量 metadata 解析，改为懒加载（文件夹展开时按需解析）
+    if (progress) progress(100);
   }
 
   // helpers for StringView
@@ -130,6 +134,15 @@ export class PvfModel {
       let text = this.decompileScript(f);
       const lowerKey = key.toLowerCase();
       if (lowerKey.endsWith('.lst')) text = formatListText(text);
+      // 若是脚本形式但扩展是 .ani.als/.als，也记录原始字节（用于 HexDiff）
+      if ((lowerKey.endsWith('.ani.als') || lowerKey.endsWith('.als')) && !this.originalAlsBytes.has(lowerKey)) {
+        const slice = raw.subarray(0, f.dataLen).slice();
+        this.originalAlsBytes.set(lowerKey, slice);
+        if (!this.originalTextMeta.has(lowerKey)) {
+          // 对脚本我们只需要一个占位 meta，编码统一为 cp950（脚本重新编译后可能变化）
+          this.originalTextMeta.set(lowerKey, { encoding: 'cp950', newline: '\n', hadBom: false, finalNewline: text.endsWith('\n') });
+        }
+      }
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
@@ -139,8 +152,8 @@ export class PvfModel {
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
-    // .ani / .ani.als / .als：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
-    if ((lower.endsWith('.ani') || lower.endsWith('.ani.als') || lower.endsWith('.als')) && !f.isScriptFile) {
+    // 仅 .ani：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
+    if ((lower.endsWith('.ani')) && !f.isScriptFile) {
       const txt = decompileBinaryAni(f);
       if (txt !== null) {
         const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(txt, 'utf8')]);
@@ -155,8 +168,31 @@ export class PvfModel {
     // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
     if (isTextByExtension(lower) || lower.endsWith('.ani.als') || lower.endsWith('.als')) {
       const sliceForDetect = raw.subarray(0, f.dataLen);
-      const enc = detectEncoding(key, sliceForDetect);
+      let enc = detectEncoding(key, sliceForDetect);
+      // 强制 ALS 永远使用单字节编码（避免被二进制噪声判成 utf16）
+      if (lower.endsWith('.ani.als') || lower.endsWith('.als')) {
+        if (enc.startsWith('utf16')) enc = encodingForKey(lower.replace('.ani.als', '.ani'));
+      }
       const text = iconv.decode(Buffer.from(sliceForDetect), enc);
+      // 仅对 ALS 记录原始换行 / 编码 / BOM，用于原样写回
+      if (lower.endsWith('.ani.als') || lower.endsWith('.als')) {
+        let newline = '\n';
+        if (text.indexOf('\r\n') >= 0) newline = '\r\n';
+        else if (text.indexOf('\r') >= 0 && text.indexOf('\n') < 0) newline = '\r';
+        const hadBom = sliceForDetect.length >= 3 && sliceForDetect[0] === 0xEF && sliceForDetect[1] === 0xBB && sliceForDetect[2] === 0xBF;
+        const finalNewline = /\r?\n$/.test(text);
+        if (!this.originalTextMeta.has(lower)) {
+          this.originalTextMeta.set(lower, { encoding: enc, newline, hadBom, finalNewline });
+        } else {
+          // 如果之前误记录为 utf16，纠正为单字节编码
+          const meta = this.originalTextMeta.get(lower)!;
+          if (meta.encoding.startsWith('utf16')) meta.encoding = enc;
+        }
+        if (!this.originalAlsBytes.has(lower)) {
+          // 复制保留原始字节（不含我们后续 UTF8+BOM 包装）
+          this.originalAlsBytes.set(lower, sliceForDetect.slice());
+        }
+      }
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
@@ -177,24 +213,114 @@ export class PvfModel {
     const f = this.fileList.get(key);
     if (!f) return false;
     const lower = key.toLowerCase();
-    // .ani：始终按文本保存，避免被脚本编译器重写内容
+
+    // 自动 ALS 文本识别：即便原始数据是脚本二进制，只要用户当前写入内容看起来是 ALS（含核心标签），就强制按文本 ALS 保存
+    if ((lower.endsWith('.ani.als') || lower.endsWith('.als')) && content.length > 0) {
+      let probe = Buffer.from(content).toString('utf8');
+      if (probe.charCodeAt(0) === 0xFEFF) probe = probe.slice(1);
+      const alsPattern = /\[(use\s+animation|add|none\s+effect\s+add|create\s+draw\s+only\s+object)\]/i;
+      if (alsPattern.test(probe)) {
+        // 调用覆盖保存（不再走脚本编译）
+        if (this.saveAlsTextOverride(lower, probe)) return true;
+      }
+    }
+    // .ani：尝试编译为二进制 (对齐 pvfUtility)；失败则按文本保存
     if (lower.endsWith('.ani')) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const bin = compileBinaryAni(text, lower);
+      if (bin && bin.length > 0) {
+        f.writeFileData(bin);
+        f.changed = true;
+        return true;
+      }
       const enc = encodingForKey(lower);
       const encoded = iconv.encode(text, enc);
       f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       f.changed = true;
       return true;
     }
-    // .ani.als / .als：按普通文本（与 .ani 相同编码策略）写入，不尝试脚本编译
-    if (lower.endsWith('.ani.als') || lower.endsWith('.als')) {
+    // .ani.als：若原文件不是脚本则按 ALS 文本处理；若是脚本则留给脚本分支
+    if (lower.endsWith('.ani.als') && !f.isScriptFile) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-      // 使用 .ani 推导编码
-      const enc = encodingForKey(lower.replace('.ani.als', '.ani').replace('.als', '.ani'));
-      const encoded = iconv.encode(text, enc);
-      f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
+      // 兼容：剥离误混入的 #PVF_File 头（ALS 本不应有）
+      if (text.startsWith('#PVF_File')) {
+        text = text.replace(/^#PVF_File\s*/, '');
+      }
+      // 若此前未读取过，补采集原始字节 & 元信息（使用当前 f.data 作为 before）
+      if (!this.originalAlsBytes.has(lower) && f.data) {
+        const origSlice = f.data.subarray(0, f.dataLen).slice();
+        this.originalAlsBytes.set(lower, origSlice);
+        if (!this.originalTextMeta.has(lower)) {
+          // 粗略猜测编码（按 key 推导），行尾统一检测
+          let encGuess = detectEncoding(lower, origSlice);
+          if (encGuess.startsWith('utf16')) encGuess = encodingForKey(lower.replace('.ani.als', '.ani'));
+          const txtGuess = iconv.decode(Buffer.from(origSlice), encGuess);
+          let newline = '\n';
+          if (txtGuess.indexOf('\r\n') >= 0) newline = '\r\n'; else if (txtGuess.indexOf('\r') >= 0 && txtGuess.indexOf('\n') < 0) newline = '\r';
+          this.originalTextMeta.set(lower, { encoding: encGuess, newline, hadBom: origSlice.length >= 3 && origSlice[0] === 0xEF && origSlice[1] === 0xBB && origSlice[2] === 0xBF, finalNewline: /\r?\n$/.test(txtGuess) });
+        }
+      }
+      const meta = this.originalTextMeta.get(lower);
+      if (meta) {
+        // 规范化行结束再还原
+        const normalized = text.replace(/\r\n|\r|\n/g, '\n');
+        let restored = normalized.split('\n').join(meta.newline);
+        if (meta.finalNewline && !restored.endsWith(meta.newline)) restored += meta.newline;
+        // 强制避免再次写成 utf16
+        if (meta.encoding.startsWith('utf16')) meta.encoding = encodingForKey(lower.replace('.ani.als', '.ani'));
+        let buf = iconv.encode(restored, meta.encoding);
+        if (meta.hadBom && meta.encoding.toLowerCase() === 'utf8') {
+          buf = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), buf]);
+        }
+        f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
+      } else {
+        // 非原始 meta 情况：尝试 cp949 -> 再回退 cp950，便于排查客户端对编码的敏感性
+        let chosen = 'cp949';
+        try { iconv.encode('test', chosen); } catch { chosen = encodingForKey(lower.replace('.ani.als', '.ani')); }
+        const encoded = iconv.encode(text, chosen);
+        f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
+      }
+      f.changed = true;
+      return true;
+    }
+    // 独立 .als（非脚本）按文本；脚本留给后面脚本分支
+    if (lower.endsWith('.als') && !lower.endsWith('.ani.als') && !f.isScriptFile) {
+      let text = Buffer.from(content).toString('utf8');
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      if (text.startsWith('#PVF_File')) {
+        text = text.replace(/^#PVF_File\s*/, '');
+      }
+      if (!this.originalAlsBytes.has(lower) && f.data) {
+        const origSlice = f.data.subarray(0, f.dataLen).slice();
+        this.originalAlsBytes.set(lower, origSlice);
+        if (!this.originalTextMeta.has(lower)) {
+          let encGuess = detectEncoding(lower, origSlice);
+          if (encGuess.startsWith('utf16')) encGuess = encodingForKey(lower);
+          const txtGuess = iconv.decode(Buffer.from(origSlice), encGuess);
+          let newline = '\n';
+          if (txtGuess.indexOf('\r\n') >= 0) newline = '\r\n'; else if (txtGuess.indexOf('\r') >= 0 && txtGuess.indexOf('\n') < 0) newline = '\r';
+          this.originalTextMeta.set(lower, { encoding: encGuess, newline, hadBom: origSlice.length >= 3 && origSlice[0] === 0xEF && origSlice[1] === 0xBB && origSlice[2] === 0xBF, finalNewline: /\r?\n$/.test(txtGuess) });
+        }
+      }
+      const meta = this.originalTextMeta.get(lower);
+      if (meta) {
+        const normalized = text.replace(/\r\n|\r|\n/g, '\n');
+        let restored = normalized.split('\n').join(meta.newline);
+        if (meta.finalNewline && !restored.endsWith(meta.newline)) restored += meta.newline;
+        if (meta.encoding.startsWith('utf16')) meta.encoding = encodingForKey(lower);
+        let buf = iconv.encode(restored, meta.encoding);
+        if (meta.hadBom && meta.encoding.toLowerCase() === 'utf8') {
+          buf = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), buf]);
+        }
+        f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
+      } else {
+        let chosen = 'cp949';
+        try { iconv.encode('test', chosen); } catch { chosen = encodingForKey(lower); }
+        const encoded = iconv.encode(text, chosen);
+        f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
+      }
       f.changed = true;
       return true;
     }
@@ -248,6 +374,11 @@ export class PvfModel {
 
     // 额外尝试：即便不是已识别脚本，也尝试把文本编译为脚本源（便于新建文件后直接写入脚本）
     try {
+      // 仅当其不是原生脚本的 ALS 才跳过；脚本型 .ani.als/.als 需保留编译行为
+      if ((lower.endsWith('.ani.als') || (lower.endsWith('.als') && !lower.endsWith('.ani.als')))
+        && !f.isScriptFile) {
+        throw new Error('skip als compile');
+      }
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
       // only attempt compile for plausible text content
@@ -451,6 +582,55 @@ export class PvfModel {
   // Return a list of all file keys in the pack
   public getAllKeys(): string[] {
     return Array.from(this.fileList.keys());
+  }
+
+  // 获取 ALS 文件当前与原始字节的十六进制比较（截取前后各 N 字节）
+  public getAlsByteDiffHex(key: string, span: number = 64): { before?: string; after?: string; lengthBefore: number; lengthAfter: number; isScript: boolean } {
+    const lower = key.toLowerCase();
+    const orig = this.originalAlsBytes.get(lower);
+    const f = this.fileList.get(lower);
+    if (!f || !f.data) return { lengthBefore: orig ? orig.length : 0, lengthAfter: 0, isScript: false };
+    const cur = f.data.subarray(0, f.dataLen);
+    const toHex = (buf: Uint8Array) => Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    const sliceWindow = (buf: Uint8Array) => {
+      if (buf.length <= span * 2) return toHex(buf);
+      const head = buf.subarray(0, span);
+      const tail = buf.subarray(buf.length - span);
+      return toHex(head) + ' ... ' + toHex(tail);
+    };
+    return {
+      before: orig ? sliceWindow(orig) : undefined,
+      after: sliceWindow(cur),
+      lengthBefore: orig ? orig.length : 0,
+      lengthAfter: cur.length,
+      isScript: !!f.isScriptFile
+    };
+  }
+
+  // 强制把脚本型 .ani.als / .als 覆盖为纯文本 ALS（忽略脚本编译）
+  public saveAlsTextOverride(key: string, text: string): boolean {
+    const lower = key.toLowerCase();
+    if (!(lower.endsWith('.ani.als') || lower.endsWith('.als'))) return false;
+    const f = this.fileList.get(lower);
+    if (!f) return false;
+    // 去除 BOM 和 #PVF_File 头
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    if (text.startsWith('#PVF_File')) text = text.replace(/^#PVF_File\s*/, '');
+    // 规范化换行 -> 使用当前平台换行策略，这里保持 CRLF? 暂保留原识别：默认 \n
+    let newline = '\n';
+    if (/\r\n/.test(text)) newline = '\r\n'; else if (/\r(?!\n)/.test(text)) newline = '\r';
+    const finalNewline = /\r?\n$/.test(text);
+    const normalized = text.replace(/\r\n|\r|\n/g, '\n');
+    let restored = normalized.split('\n').join(newline);
+    if (finalNewline && !restored.endsWith(newline)) restored += newline;
+    const enc = encodingForKey(lower.replace('.ani.als', '.ani'));
+    const buf = iconv.encode(restored, enc);
+    f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
+    f.changed = true;
+    // 更新 meta / 原始缓存为新的文本
+    this.originalAlsBytes.set(lower, f.data ? f.data.subarray(0, f.dataLen).slice() : new Uint8Array());
+    this.originalTextMeta.set(lower, { encoding: enc, newline, hadBom: false, finalNewline });
+    return true;
   }
 
   /**
