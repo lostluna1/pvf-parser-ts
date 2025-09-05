@@ -44,6 +44,13 @@
         }
       ]
   },
+  "iconThemes": [
+    {
+      "id": "pvfIconTheme",
+      "label": "PVF File Icons",
+      "path": "./media/pvf-icon-theme.json"
+    }
+  ],
   "commands": [
       {
         "command": "pvf.openAniEditor",
@@ -251,7 +258,8 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+  "vscode:prepublish": "npm run compile",
+  "check:icons": "node ./scripts/check-icons.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",

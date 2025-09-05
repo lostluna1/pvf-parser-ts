@@ -13,6 +13,8 @@ export function activate(context: vscode.ExtensionContext) {
     const output = vscode.window.createOutputChannel('PVF');
     const tree = new PvfProvider(model, output);
     const deco = registerPvfDecorations(context, model);
+    // 图标逻辑：在 provider 中通过 vscode.extensions.getExtension 查找当前扩展根路径，从 media/icons 读取 png
+    // 若需要在运行时修改映射，可暴露命令以动态刷新（后续可扩展）
 
     vscode.window.registerTreeDataProvider('pvfExplorerView', tree);
     // register document link provider for .lst/.nut and other path-like tokens

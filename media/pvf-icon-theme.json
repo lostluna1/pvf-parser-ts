@@ -1,0 +1,28 @@
+{
+    "$schema": "vscode://schemas/iconTheme",
+    "iconDefinitions": {
+        "ani": {
+            "iconPath": "./icons/icons8-微软-clipchamp-48.png"
+        },
+        "lst": {
+            "iconPath": "./icons/icons8-编号列表-32.png"
+        },
+        "str": {
+            "iconPath": "./icons/icons8-语言-28.png"
+        },
+        "aniAls": {
+            "iconPath": "./icons/icons8-层-48.png"
+        }
+    },
+    "fileExtensions": {
+        "ani": "ani",
+        "lst": "lst",
+        "str": "str",
+        "als": "aniAls"
+    },
+    "x-multiExtensions": {
+        ".ani.als": "./icons/icons8-层-48.png"
+    },
+    "fileNames": {},
+    "languageIds": {}
+}

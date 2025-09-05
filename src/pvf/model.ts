@@ -118,8 +118,8 @@ export class PvfModel {
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
-  // .ani / .ani.als：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
-  if ((lower.endsWith('.ani') || lower.endsWith('.ani.als')) && !f.isScriptFile) {
+  // .ani / .ani.als / .als：尝试按 pvfUtility 的 BinaryAniCompiler 解码为文本（优先）
+  if ((lower.endsWith('.ani') || lower.endsWith('.ani.als') || lower.endsWith('.als')) && !f.isScriptFile) {
       const txt = decompileBinaryAni(f);
       if (txt !== null) {
         const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(txt, 'utf8')]);
@@ -132,7 +132,7 @@ export class PvfModel {
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
     // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
-  if (isTextByExtension(lower) || lower.endsWith('.ani.als')) {
+  if (isTextByExtension(lower) || lower.endsWith('.ani.als') || lower.endsWith('.als')) {
       const sliceForDetect = raw.subarray(0, f.dataLen);
       const enc = detectEncoding(key, sliceForDetect);
       const text = iconv.decode(Buffer.from(sliceForDetect), enc);
@@ -166,12 +166,12 @@ export class PvfModel {
       f.changed = true;
       return true;
     }
-    // .ani.als：按普通文本（与 .ani 相同编码策略）写入，不尝试脚本编译
-    if (lower.endsWith('.ani.als')) {
+    // .ani.als / .als：按普通文本（与 .ani 相同编码策略）写入，不尝试脚本编译
+    if (lower.endsWith('.ani.als') || lower.endsWith('.als')) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
       // 使用 .ani 推导编码
-      const enc = encodingForKey(lower.replace('.ani.als', '.ani'));
+      const enc = encodingForKey(lower.replace('.ani.als', '.ani').replace('.als', '.ani'));
       const encoded = iconv.encode(text, enc);
       f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       f.changed = true;
