@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
-  "vscode": "^1.103.0"
+    "vscode": "^1.99.0"
   },
   "categories": [
     "Other"
@@ -58,15 +58,15 @@
           "icon": "codicon:archive"
         }
       ]
-  },
-  "iconThemes": [
-    {
-      "id": "pvfIconTheme",
-      "label": "PVF File Icons",
-      "path": "./media/pvf-icon-theme.json"
-    }
-  ],
-  "commands": [
+    },
+    "iconThemes": [
+      {
+        "id": "pvfIconTheme",
+        "label": "PVF File Icons",
+        "path": "./media/pvf-icon-theme.json"
+      }
+    ],
+    "commands": [
       {
         "command": "pvf.openAniEditor",
         "title": "ANI 编辑器"
@@ -81,7 +81,7 @@
       },
       {
         "command": "pvf.previewAni",
-    "title": "预览 ANI"
+        "title": "预览 ANI"
       },
       {
         "command": "pvf.openPack",
@@ -273,16 +273,16 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-  "vscode:prepublish": "npm run compile",
-  "check:icons": "node ./scripts/check-icons.cjs"
+    "vscode:prepublish": "npm run compile",
+    "check:icons": "node ./scripts/check-icons.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",
-    "@types/vscode": "^1.103.0",
+    "@types/vscode": "^1.99.0",
     "typescript": "^5.9.2"
   },
   "dependencies": {
-  "iconv-lite": "^0.6.3",
-  "@vscode/webview-ui-toolkit": "^1.4.0"
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "iconv-lite": "^0.6.3"
   }
 }
