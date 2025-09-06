@@ -129,8 +129,37 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
                     const nameRange = new vscode.Range(pos.line, t.nameStart, pos.line, t.nameEnd);
                     const md = new vscode.MarkdownString();
                     md.appendCodeblock(tag.name, langId);
-                    if (tag.description) md.appendMarkdown(`\n${tag.description}`);
-                    if (tag.closing) md.appendMarkdown(`\n需要闭合: [/${tag.name}]`);
+                    if (tag.description) {
+                        const lines = tag.description.split(/\r?\n/).map(l=>l.replace(/\s+$/,''));
+                        if (lines.length === 1) {
+                            md.appendMarkdown('\n' + lines[0]);
+                        } else {
+                            // 首行加粗，其余行保持原样；若后续行包含反引号或路径示例，放入代码块更清晰
+                            const first = lines[0];
+                            const rest = lines.slice(1);
+                            const needsCode = rest.some(l => /`.+`/.test(l) || /\.ani\b/i.test(l) || /^\s*\//.test(l));
+                            md.appendMarkdown(`\n**${first}**`);
+                            if (needsCode) {
+                                // 根据示例中的文件扩展名选择语言高亮
+                                const sample = rest.join('\n');
+                                const extsFound = new Set<string>();
+                                for (const m of sample.matchAll(/\.[a-zA-Z0-9_]{1,6}\b/g)) {
+                                    extsFound.add(m[0].toLowerCase());
+                                }
+                                // 默认使用当前语言语法而不是 text，保证数字/字符串等能高亮
+                                let lang = langId; // fallback to current language id
+                                const map: Record<string,string> = { '.ani':'pvf-ani', '.act':'pvf-act' };
+                                for (const ext of extsFound) {
+                                    if (map[ext]) { lang = map[ext]; break; }
+                                }
+                                md.appendCodeblock(sample, lang);
+                            } else {
+                                // 普通多行，用两个空格 + 换行维持换行
+                                const body = rest.map(l => l + '  ').join('\n');
+                                md.appendMarkdown('\n' + body);
+                            }
+                        }
+                    }
                     return new vscode.Hover(md, nameRange);
                 }
             }
@@ -143,6 +172,9 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
             const line = doc.lineAt(pos).text.slice(0, pos.character);
             if (!/\[[^\]]*$/.test(line)) return;
             const tags = await loadTags(context, short);
+                const fullLine = doc.lineAt(pos.line).text;
+                const nextChar = pos.character < fullLine.length ? fullLine[pos.character] : '';
+                const replaceClosing = nextChar === ']';
             // compute current stack up to position for dynamic closing evaluation
             function computeDepth(): number {
                 let depth = 0;
@@ -173,7 +205,14 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
                 const ci = new vscode.CompletionItem(t.name, vscode.CompletionItemKind.Keyword);
                 ci.detail = dynamicClosing ? '标签 (需闭合)' : '标签';
                 ci.documentation = t.description || '';
-                if (dynamicClosing) ci.insertText = new vscode.SnippetString(`${t.name}]$0[/${t.name}]`);
+                if (dynamicClosing) {
+                    ci.insertText = new vscode.SnippetString(`${t.name}]$0[/${t.name}]`);
+                } else {
+                    ci.insertText = t.name + ']';
+                }
+                if (replaceClosing) {
+                    ci.range = new vscode.Range(pos.line, pos.character, pos.line, pos.character + 1);
+                }
                 return ci;
             });
         }
