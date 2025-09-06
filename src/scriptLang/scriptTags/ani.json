@@ -1,0 +1,28 @@
+{
+  "tags": [
+    { "name": "FRAME MAX", "description": "最大帧数", "closing": false },
+    { "name": "IMAGE", "description": "图像，接受一个img路径", "closing": false },
+    { "name": "IMAGE POS", "description": "图像偏移", "closing": false },
+    { "name": "IMAGE RATE", "description": "缩放比率", "closing": false },
+    { "name": "IMAGE ROTATE", "description": "旋转角度", "closing": false },
+    { "name": "RGBA", "description": "颜色/透明度", "closing": false },
+    { "name": "DAMAGE BOX", "description": "受击框，6个数字为一组", "closing": false },
+    { "name": "ATTACK BOX", "description": "攻击框，6个数字为一组", "closing": false },
+    { "name": "SHADOW", "description": "是否添加阴影", "closing": false },
+    { "name": "COORD", "description": "坐标/位置相关", "closing": false },
+    { "name": "OPERATION", "description": "操作模式/标志", "closing": false },
+    { "name": "SPECTRUM", "description": "拖影光谱效果", "closing": false },
+    { "name": "INTERPOLATION", "description": "插值模式", "closing": false },
+    { "name": "SET FLAG", "description": "设置帧标记，可在脚本中读取", "closing": false },
+    { "name": "GRAPHIC EFFECT", "description": "图形效果", "closing": false },
+    { "name": "PLAY SOUND", "description": "播放声音", "closing": false },
+    { "name": "DELAY", "description": "帧延迟(毫秒)", "closing": false },
+    { "name": "PRELOAD", "description": "预加载资源", "closing": false },
+    { "name": "DAMAGE TYPE", "description": "伤害判定类型", "closing": false },
+    { "name": "FLIP TYPE", "description": "翻转类型", "closing": false },
+    { "name": "LOOP", "description": "循环标志/层面", "closing": false },
+    { "name": "LOOP START", "description": "循环段开始", "closing": false },
+    { "name": "LOOP END", "description": "循环段结束 (跟一个次数)", "closing": false },
+    { "name": "CLIP", "description": "裁剪区域", "closing": false }
+  ]
+}

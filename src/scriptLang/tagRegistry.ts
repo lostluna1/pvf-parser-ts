@@ -59,7 +59,17 @@ export function registerTagDiagnostics(context: vscode.ExtensionContext, langId:
                 const lower = t.rawName.toLowerCase();
                 const range = new vscode.Range(lineNum, t.matchStart, lineNum, t.matchEnd);
                 if (!knownTags.has(lower)) {
-                    // 未知标签：直接报告，不参与栈匹配
+                    // ani 特殊：动态 FRAME### 视为合法（不在静态列表）
+                    if (short === 'ani' && /^frame\d{3,}$/.test(lower)) {
+                        // 跳过未知告警，后续单独帧范围诊断在 ani/registerAni.ts
+                        continue;
+                    }
+                    // 兼容旧拼写：ATTACT BOX -> ATTACK BOX，提示修正建议
+                    if (short === 'ani' && lower === 'attact box') {
+                        const d = new vscode.Diagnostic(range, '未知标签 [ATTACT BOX]，是否想写 ATTACK BOX ?', vscode.DiagnosticSeverity.Information);
+                        diags.push(d);
+                        continue;
+                    }
                     const msg = t.isClose ? `未知闭合标签 [/${t.rawName}]` : `未知标签 [${t.rawName}]`;
                     diags.push(new vscode.Diagnostic(range, msg, vscode.DiagnosticSeverity.Warning));
                     continue;

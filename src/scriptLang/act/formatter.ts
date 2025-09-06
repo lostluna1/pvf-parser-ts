@@ -26,46 +26,7 @@ class ActFormatter implements FormatterStrategy {
         continue;
       } else emptyRun = 0;
 
-    // 若处于值区域：对多值行执行拆分
-    if (valueParentDepth !== null && !trimmed.startsWith('[')) {
-        // 将反引号字符串视为单个 token，其余按空白分隔
-        const tokenRegex = /`[^`]*`|[^\s]+/g;
-        const tokens = trimmed.match(tokenRegex) || [];
-        if (tokens.length > 1) {
-      const valueIndent = indentUnit.repeat(valueParentDepth + 1);
-          const newText = tokens.map(t => valueIndent + t).join(doc.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n');
-          edits.push(vscode.TextEdit.replace(line.range, newText));
-          // 不再对该行做后续缩进行处理
-          continue;
-        }
-      }
-      // 回溯式补救：如果上一条非空行是“非需闭合标签”，而当前行被用户合并成多值行，也尝试拆分
-      if (valueParentDepth === null && !trimmed.startsWith('[')) {
-        let prevIdx = i - 1;
-        while (prevIdx >= 0) {
-          const prevText = doc.lineAt(prevIdx).text.trim();
-            if (prevText.length === 0) { prevIdx--; continue; }
-            // 匹配简单开标签 [NAME ...]
-            const m = /^\[([^\]/]+)\]/.exec(prevText);
-            if (!m) break; // 上一非空不是开标签
-            const tagName = m[1].trim().toLowerCase();
-            let dynClosable = closable.has(tagName);
-            if (tagName === 'trigger') dynClosable = false; // 回溯下无法精准判断根级，宁可当作非需闭合以触发拆分
-            if (!dynClosable) {
-              const tokenRegex = /`[^`]*`|[^\s]+/g;
-              const tokens = trimmed.match(tokenRegex) || [];
-              if (tokens.length > 1) {
-                const prevLineDepth = depth; // 近似使用当前 depth（误差仅影响缩进层级一小步）
-                const valueIndent = indentUnit.repeat(prevLineDepth + 1);
-                const newText = tokens.map(t => valueIndent + t).join(doc.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n');
-                edits.push(vscode.TextEdit.replace(line.range, newText));
-                // 不需继续本行后续处理
-                continue;
-              }
-            }
-            break;
-        }
-      }
+  // (已禁用 act 中自闭合标签值多值自动拆分，保持同行)
     // 判断当前是否为值行（非标签，且 valueParentDepth 生效）
     const isValueLine = valueParentDepth !== null && !trimmed.startsWith('[');
 

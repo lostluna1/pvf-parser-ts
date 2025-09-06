@@ -12,7 +12,8 @@
   ],
   "activationEvents": [
     "onFileSystem:pvf",
-    "onLanguage:pvf-act"
+    "onLanguage:pvf-act",
+    "onLanguage:pvf-ani"
   ],
   "icon": "media/icons8-源代码-48.png",
   "main": "./dist/extension.js",
@@ -23,6 +24,12 @@
         "aliases": ["ACT", "pvf-act"],
         "extensions": [".act"],
         "configuration": "./src/scriptLang/act/language-configuration.json"
+      },
+      {
+        "id": "pvf-ani",
+        "aliases": ["ANI", "pvf-ani"],
+        "extensions": [".ani"],
+        "configuration": "./src/scriptLang/ani/language-configuration.json"
       }
     ],
     "grammars": [
@@ -30,6 +37,11 @@
         "language": "pvf-act",
         "scopeName": "source.pvf-act",
         "path": "./syntaxes/pvf-act.tmLanguage.json"
+      },
+      {
+        "language": "pvf-ani",
+        "scopeName": "source.pvf-ani",
+        "path": "./syntaxes/pvf-ani.tmLanguage.json"
       }
     ],
     "configuration": {

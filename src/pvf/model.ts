@@ -273,9 +273,10 @@ export class PvfModel {
         f.changed = true;
         return true;
       }
-      const enc = encodingForKey(lower);
-      const encoded = iconv.encode(text, enc);
-      f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
+  // Fallback: 保持 UTF-8 + BOM（避免回退到单字节导致再打开乱码）
+  const utf8 = Buffer.from(text, 'utf8');
+  const withBom = Buffer.concat([Buffer.from([0xEF,0xBB,0xBF]), utf8]);
+  f.writeFileData(new Uint8Array(withBom.buffer, withBom.byteOffset, withBom.byteLength));
       f.changed = true;
       return true;
     }

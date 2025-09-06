@@ -52,6 +52,9 @@ export function detectEncoding(key: string, bytes: Uint8Array): string {
     if (bytes[0] === 0xFF && bytes[1] === 0xFE) return 'utf16le';
     if (bytes[0] === 0xFE && bytes[1] === 0xFF) return 'utf16be';
   }
+  if (bytes.length >= 3) {
+    if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) return 'utf8';
+  }
   if (bytes.length >= 4) {
     let nulEven = 0, nulOdd = 0;
     const n = Math.min(bytes.length, 4096);

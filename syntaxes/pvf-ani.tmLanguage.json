@@ -1,0 +1,47 @@
+{
+  "scopeName": "source.pvf-ani",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#tags" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.ani",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.other.backtick.ani",
+          "begin": "`",
+          "end": "`"
+        }
+      ]
+    },
+    "tags": {
+      "patterns": [
+        {
+          "name": "keyword.control.tag.ani",
+          "match": "\\[[^\\]]+\\]"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.number.ani",
+          "match": "-?\\b[0-9]+(\\.[0-9]+)?\\b"
+        }
+      ]
+    }
+  },
+  "fileTypes": ["ani"],
+  "name": "PVF ANI",
+  "patternsUuid": "pvf-ani-basic"
+}
