@@ -28,7 +28,7 @@ export async function loadTags(context: vscode.ExtensionContext, short: string):
 export function clearTagCache(short?: string) { if (short) cache.delete(short); else cache.clear(); }
 
 // Internal: iterate all bracketed tags in a single line of text.
-function* iterateBracketTags(lineText: string): Generator<{ isClose: boolean; rawName: string; matchStart: number; matchEnd: number; nameStart: number; nameEnd: number }> {
+export function* iterateBracketTags(lineText: string): Generator<{ isClose: boolean; rawName: string; matchStart: number; matchEnd: number; nameStart: number; nameEnd: number }> {
     const regex = /\[(\/)?([^\]]*)\]/g; // capture full inside (may include spaces or operators)
     let m: RegExpExecArray | null;
     while ((m = regex.exec(lineText))) {
@@ -50,6 +50,7 @@ export function registerTagDiagnostics(context: vscode.ExtensionContext, langId:
         const tags = await loadTags(context, short);
         if (!tags.length) { collection.delete(doc.uri); return; }
     const needCloseBase = new Set(tags.filter(t => t.closing).map(t => t.name.toLowerCase()));
+    const knownTags = new Set(tags.map(t => t.name.toLowerCase()));
     const stack: { tag: string; line: number; start: number }[] = [];
         const diags: vscode.Diagnostic[] = [];
         for (let lineNum = 0; lineNum < doc.lineCount; lineNum++) {
@@ -57,6 +58,12 @@ export function registerTagDiagnostics(context: vscode.ExtensionContext, langId:
             for (const t of iterateBracketTags(text)) {
                 const lower = t.rawName.toLowerCase();
                 const range = new vscode.Range(lineNum, t.matchStart, lineNum, t.matchEnd);
+                if (!knownTags.has(lower)) {
+                    // 未知标签：直接报告，不参与栈匹配
+                    const msg = t.isClose ? `未知闭合标签 [/${t.rawName}]` : `未知标签 [${t.rawName}]`;
+                    diags.push(new vscode.Diagnostic(range, msg, vscode.DiagnosticSeverity.Warning));
+                    continue;
+                }
                 if (!t.isClose) {
                     // dynamic rule for act: TRIGGER only closable at root level
                     let dynamicClosing = needCloseBase.has(lower);

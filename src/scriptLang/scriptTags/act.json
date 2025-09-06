@@ -7,7 +7,13 @@
     { "name": "CREATE PASSIVEOBJECT", "description": "创建被动对象", "closing": true },
     { "name": "CHECKUP", "description": "检查条件块", "closing": true },
     { "name": "IS INDEX", "description": "检查索引", "closing": true },
+    { "name": "MOTION", "description": "附加一个ani对象", "closing": true },
+    { "name": "SOUND", "description": "音效", "closing": true },
 
+    { "name": "NO EFFECT", "description": "不应用图像效果", "closing": false },
+    { "name": "FRAME", "description": "帧", "closing": false },
+    { "name": "BASE ANI", "description": "基本ani，只能放入一个ani路径", "closing": false },
+    { "name": "ON ATTACKSUCCESS", "description": "攻击成功时的行为", "closing": false },
     { "name": "WHICH", "description": "选择作用对象", "closing": false },
     { "name": "CHARACTER", "description": "选择角色对象", "closing": false },
     { "name": "PASSIVE", "description": "选择被动对象集合", "closing": false },
