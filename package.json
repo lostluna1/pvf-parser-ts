@@ -11,11 +11,27 @@
     "Other"
   ],
   "activationEvents": [
-    "onFileSystem:pvf"
+    "onFileSystem:pvf",
+    "onLanguage:pvf-act"
   ],
   "icon": "media/icons8-源代码-48.png",
   "main": "./dist/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "pvf-act",
+        "aliases": ["ACT", "pvf-act"],
+        "extensions": [".act"],
+        "configuration": "./src/scriptLang/act/language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pvf-act",
+        "scopeName": "source.pvf-act",
+        "path": "./syntaxes/pvf-act.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "title": "PVF Pack Explorer",
       "properties": {
@@ -279,7 +295,8 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-  "vscode:prepublish": "npm run compile",
+  "postcompile": "node scripts/copy-script-tags.cjs",
+  "vscode:prepublish": "npm run compile && npm run postcompile",
   "check:icons": "node ./scripts/check-icons.cjs"
   },
   "devDependencies": {

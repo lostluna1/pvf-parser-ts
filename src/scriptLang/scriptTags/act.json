@@ -1,0 +1,49 @@
+{
+  "tags": [
+    { "name": "TRIGGER", "description": "触发块", "closing": true },
+    { "name": "BEHAVIOR", "description": "行为块", "closing": true },
+    { "name": "IF", "description": "条件块", "closing": true },
+    { "name": "DIM", "description": "变量定义块", "closing": true },
+    { "name": "CREATE PASSIVEOBJECT", "description": "创建被动对象", "closing": true },
+    { "name": "CHECKUP", "description": "检查条件块", "closing": true },
+    { "name": "IS INDEX", "description": "检查索引", "closing": true },
+
+    { "name": "WHICH", "description": "选择作用对象", "closing": false },
+    { "name": "CHARACTER", "description": "选择角色对象", "closing": false },
+    { "name": "PASSIVE", "description": "选择被动对象集合", "closing": false },
+    { "name": "ME", "description": "当前主体", "closing": false },
+    { "name": "DO BEHAVIOR", "description": "执行行为(后接索引值)", "closing": false },
+    { "name": "CHECKUP OBJECT", "description": "检查对象(早期语法?)", "closing": false },
+    { "name": "ENABLE", "description": "启用触发(配合 ON/OFF)", "closing": false },
+    { "name": "ON", "description": "开启/设为 ON", "closing": false },
+    { "name": "OFF", "description": "关闭/设为 OFF", "closing": false },
+    { "name": "DESTROY", "description": "销毁动作/对象", "closing": false },
+    { "name": "SET WHOLE DAMAGETYPE", "description": "设置整体伤害类型", "closing": false },
+    { "name": "LIMIT", "description": "限制次数", "closing": false },
+    { "name": "SET ACTION", "description": "设置动作", "closing": false },
+    { "name": "ATTACK", "description": "攻击动作上下文", "closing": false },
+    { "name": "NOW", "description": "立即执行标记", "closing": false },
+    { "name": "SET SYMBOL", "description": "设置符号/标记", "closing": false },
+    { "name": "CHECKED NO", "description": "检查结果为否分支", "closing": false },
+
+    { "name": "INDEX", "description": "对象索引值", "closing": false },
+    { "name": "PARTICLE FILENAME", "description": "粒子文件名", "closing": false },
+    { "name": "LEVEL", "description": "等级/层级", "closing": false },
+    { "name": "POS", "description": "位置 (x y extra)", "closing": false },
+    { "name": "USE MY DIRECTION", "description": "使用自身方向", "closing": false },
+    { "name": "USE MAP POS", "description": "使用地图位置", "closing": false },
+    { "name": "CENTER MSG", "description": "居中消息显示", "closing": false },
+    { "name": "TRIGGER", "description": "(重复出现: 已在上方, 允许补全重复输入)", "closing": true },
+
+    { "name": "IS TARGET STATE", "description": "判断目标状态", "closing": false },
+    { "name": "IS NOT TARGET STATE", "description": "判断目标非状态", "closing": false },
+    { "name": "CHECK SYMBOL", "description": "检查标记/符号", "closing": false },
+
+    { "name": "=", "description": "赋值/比较= (上下文不同)", "closing": false },
+    { "name": "+", "description": "加法/时间偏移", "closing": false },
+    { "name": "<", "description": "比较 <", "closing": false },
+    { "name": "<=", "description": "比较 <=", "closing": false },
+
+    { "name": "GET TIME", "description": "获取当前时间", "closing": false }
+  ]
+}

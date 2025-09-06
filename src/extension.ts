@@ -5,6 +5,7 @@ import { PvfProvider } from './pvf/provider';
 import { registerPathLinkProvider } from './pvf/pathLinkProvider';
 import { registerPvfDecorations } from './pvf/decorations';
 import { registerAllCommands } from './commander/index.js';
+import { registerScriptLanguages } from './scriptLang/index';
 import * as indexer from './npk/indexer';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -141,6 +142,9 @@ export function activate(context: vscode.ExtensionContext) {
             rename(): void { /* implement if needed */ }
         })(), { isCaseSensitive: true, isReadonly: false }),
     );
+
+    // 注册脚本语言特性 (.act 等)
+    registerScriptLanguages(context);
 }
 
 export function deactivate() { }

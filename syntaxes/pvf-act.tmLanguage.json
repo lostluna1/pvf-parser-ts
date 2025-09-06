@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF ACT",
+  "scopeName": "source.pvf-act",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#string" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        { "name": "comment.line.number-sign.pvf-act", "match": "#.*$" }
+      ]
+    },
+    "string": {
+      "patterns": [
+        { "name": "string.quoted.double.pvf-act", "begin": "\"", "end": "\"", "patterns": [ { "match": "\\\\.", "name": "constant.character.escape.pvf-act" } ] },
+        { "name": "string.quoted.single.pvf-act", "begin": "'", "end": "'", "patterns": [ { "match": "\\\\.", "name": "constant.character.escape.pvf-act" } ] },
+        { "name": "string.quoted.backtick.pvf-act", "begin": "`", "end": "`", "patterns": [ { "match": "\\\\.", "name": "constant.character.escape.pvf-act" } ] }
+      ]
+    },
+    "number": {
+      "patterns": [
+        { "name": "constant.numeric.pvf-act", "match": "(?x) (?:0x[0-9A-Fa-f]+|[0-9]+(?:\\.[0-9]+)?)" }
+      ]
+    },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.pvf-act",
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.pvf-act" } },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.tag.end.pvf-act" } },
+          "patterns": [
+            { "name": "entity.name.tag.pvf-act", "match": "[A-Za-z_][A-Za-z0-9_]*" },
+            { "include": "#string" },
+            { "include": "#number" }
+          ]
+        }
+      ]
+    }
+  },
+  "fileTypes": ["act"],
+  "uuid": "b4e3b4f8-5e54-4b5c-b1af-7c1f2a2d5f00"
+}
