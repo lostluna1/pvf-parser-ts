@@ -38,6 +38,12 @@
           "type": "string",
           "default": ".nut,.lst,.ani,.ani.als,.als,.ui,.png,.jpg,.jpeg,.dds,.bmp,.tga,.gif,.wav,.ogg,.mp3,.bin",
           "description": "解析 [name] 标签时要排除的扩展名（逗号/空格/分号分隔）。其他所有文件都会扫描其文本前 32KB 是否含 [name]。"
+        },
+        "pvf.encodingMode": {
+          "type": "string",
+          "enum": ["AUTO", "KR", "TW", "CN", "JP", "UTF8"],
+          "default": "AUTO",
+          "description": "文本解码基准：KR=cp949, TW=cp950, CN=gb18030, JP=shift_jis, UTF8=utf8；AUTO 时保持原逻辑 (.nut=cp949 其他=cp950)。影响读取/写入文本与 stringtable。"
         }
       }
     },

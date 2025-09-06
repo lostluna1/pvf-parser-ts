@@ -44,6 +44,44 @@ export class PvfModel {
 
   async open(filePath: string, progress?: Progress) {
     await openImpl.call(this, filePath, progress);
+    // AUTO 模式：尝试基于 stringtable.bin 的可解析度推断区域编码（gb18030 / cp950 / cp949 / shift_jis / utf8）
+    try {
+      const vscodeMod = await import('vscode');
+      const cfg = vscodeMod.workspace.getConfiguration();
+      const mode = (cfg.get<string>('pvf.encodingMode', 'AUTO') || 'AUTO').toUpperCase();
+      if (mode === 'AUTO') {
+  const { setRuntimeEncodingOverride, getRuntimeEncodingOverride } = await import('./helpers.js');
+        if (!getRuntimeEncodingOverride()) {
+          const stFile = this.getFileByKey('stringtable.bin');
+          if (stFile) {
+            const raw = await this.readAndDecrypt(stFile);
+            const slice = raw.subarray(0, stFile.dataLen);
+            const candidates = ['gb18030','cp950','cp949','shift_jis','utf8'];
+            let bestEnc: string | null = null; let bestScore = -1;
+            for (const enc of candidates) {
+              try {
+                const txt = iconv.decode(Buffer.from(slice), enc);
+                // 评分：可打印比例 + 常见汉字/假名出现加权
+                const n = Math.min(txt.length, 8000); if (n === 0) continue;
+                let printable = 0, cjk = 0;
+                for (let i=0;i<n;i++) {
+                  const c = txt.charCodeAt(i);
+                  if (c === 9 || c===10 || c===13 || (c>=32 && c!==127)) printable++;
+                  if ((c >= 0x4e00 && c <= 0x9fff) || (c>=0x3040 && c<=0x30ff)) cjk++;
+                }
+                const score = (printable / n) + cjk * 0.0005; // 假设普通文本含 CJK 则略加分
+                if (score > bestScore) { bestScore = score; bestEnc = enc; }
+              } catch { /* ignore enc */ }
+            }
+            if (bestEnc && bestEnc !== 'cp950') {
+              setRuntimeEncodingOverride(bestEnc);
+              // 重新加载 stringtable 以使用新编码
+              try { await this.loadStringAssets(); } catch {}
+            }
+          }
+        }
+      }
+    } catch { /* ignore auto-detect errors */ }
     // 构建 .lst 解析索引（依赖 stringtable 已在 openImpl 内尝试加载）
     try { if (progress) progress(55); await this.buildListFileIndices(); if (progress) progress(70); } catch { /* ignore parsing errors */ }
     // 取消启动时全量 metadata 解析，改为懒加载（文件夹展开时按需解析）
@@ -139,8 +177,8 @@ export class PvfModel {
         const slice = raw.subarray(0, f.dataLen).slice();
         this.originalAlsBytes.set(lowerKey, slice);
         if (!this.originalTextMeta.has(lowerKey)) {
-          // 对脚本我们只需要一个占位 meta，编码统一为 cp950（脚本重新编译后可能变化）
-          this.originalTextMeta.set(lowerKey, { encoding: 'cp950', newline: '\n', hadBom: false, finalNewline: text.endsWith('\n') });
+          // 对脚本我们只需要一个占位 meta，使用当前配置推导编码
+          this.originalTextMeta.set(lowerKey, { encoding: encodingForKey(lowerKey), newline: '\n', hadBom: false, finalNewline: text.endsWith('\n') });
         }
       }
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
@@ -161,11 +199,12 @@ export class PvfModel {
       }
     }
     if (lower.endsWith('.nut')) {
-      const text = iconv.decode(Buffer.from(raw.subarray(0, f.dataLen)), 'cp949');
+      // .nut 始终按 encodingForKey 允许配置覆盖（KR 模式下仍为 cp949）
+      const text = iconv.decode(Buffer.from(raw.subarray(0, f.dataLen)), encodingForKey(lower));
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
-    // Known text types (TW: cp950) rendered as UTF-8 with BOM for editing
+    // Known text types rendered as UTF-8 with BOM for editing
     if (isTextByExtension(lower) || lower.endsWith('.ani.als') || lower.endsWith('.als')) {
       const sliceForDetect = raw.subarray(0, f.dataLen);
       let enc = detectEncoding(key, sliceForDetect);
@@ -276,9 +315,9 @@ export class PvfModel {
         }
         f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
       } else {
-        // 非原始 meta 情况：尝试 cp949 -> 再回退 cp950，便于排查客户端对编码的敏感性
-        let chosen = 'cp949';
-        try { iconv.encode('test', chosen); } catch { chosen = encodingForKey(lower.replace('.ani.als', '.ani')); }
+  // 非原始 meta 情况：先尝试当前区域主编码 -> 回退 encodingForKey
+  let chosen = encodingForKey(lower.replace('.ani.als', '.ani'));
+  try { iconv.encode('test', chosen); } catch { chosen = 'utf8'; }
         const encoded = iconv.encode(text, chosen);
         f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       }
@@ -316,8 +355,8 @@ export class PvfModel {
         }
         f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
       } else {
-        let chosen = 'cp949';
-        try { iconv.encode('test', chosen); } catch { chosen = encodingForKey(lower); }
+  let chosen = encodingForKey(lower);
+  try { iconv.encode('test', chosen); } catch { chosen = 'utf8'; }
         const encoded = iconv.encode(text, chosen);
         f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       }
@@ -396,11 +435,11 @@ export class PvfModel {
       // ignore compile failures and continue fallback
     }
 
-    // .nut：UTF-8 文本 -> cp949
+  // .nut：UTF-8 文本 -> 目标编码 (默认 AUTO 下为 cp949)
     if (lower.endsWith('.nut')) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-      const encoded = iconv.encode(text, 'cp949');
+  const encoded = iconv.encode(text, encodingForKey(lower));
       f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       f.changed = true;
       return true;
@@ -441,7 +480,7 @@ export class PvfModel {
     }
     if (lower.endsWith('.nut')) {
       const src = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-      const text = iconv.decode(Buffer.from(src), 'cp949');
+  const text = iconv.decode(Buffer.from(src), encodingForKey(lower));
       return Buffer.byteLength(text, 'utf8') + 3;
     }
     if (isTextByExtension(lower)) {
@@ -490,7 +529,7 @@ export class PvfModel {
     const k = key.toLowerCase();
     if (this.fileList.has(k)) return false;
     // default checksum and offsets; zero-length file
-    const nameBytes = iconv.encode(k, 'cp949');
+  const nameBytes = iconv.encode(k, encodingForKey(k));
     const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
@@ -507,7 +546,7 @@ export class PvfModel {
     // Represent folder by an entry with zero-length name and no data; keep as non-file by not marking as file in entries (we use presence of trailing entries to show folder)
     // We'll create a hidden placeholder file named `${k}/.folder` so folder exists in listings
     const placeholderKey = `${k}/.folder`;
-    const nameBytes = iconv.encode(placeholderKey, 'cp949');
+  const nameBytes = iconv.encode(placeholderKey, encodingForKey(placeholderKey));
     const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
@@ -542,14 +581,15 @@ export class PvfModel {
     const st = this.fileList.get('stringtable.bin');
     if (st) {
       const bytes = await this.readAndDecrypt(st);
-      this.strtable = new StringTable('cp950');
+  // 使用当前配置的基础编码 (stringtable 不区分扩展，传入一个代表性 key)
+  this.strtable = new StringTable(encodingForKey('stringtable.bin'));
       this.strtable.load(bytes.subarray(0, st.dataLen));
     }
     const nstr = this.fileList.get('n_string.lst');
     if (nstr) {
       const bytes = await this.readAndDecrypt(nstr);
       this.strview = new StringView();
-      await this.strview.init(bytes.subarray(0, nstr.dataLen), this, 'cp950');
+  await this.strview.init(bytes.subarray(0, nstr.dataLen), this, encodingForKey('n_string.lst'));
     }
   }
 
@@ -563,7 +603,7 @@ export class PvfModel {
       existing.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
       existing.changed = true;
     } else {
-      const nameBytes = iconv.encode('stringtable.bin', 'cp949');
+  const nameBytes = iconv.encode('stringtable.bin', encodingForKey('stringtable.bin'));
       const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, bin.length, 0, 0);
       pf.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
       pf.changed = true;

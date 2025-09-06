@@ -1,10 +1,36 @@
 import * as iconv from 'iconv-lite';
+import * as vscode from 'vscode';
+
+// 运行期（AUTO 模式下）依据包内检测出的基础编码覆盖：非 .nut 文件使用该覆盖
+let runtimeEncodingOverride: string | null = null;
+export function setRuntimeEncodingOverride(enc: string | null) { runtimeEncodingOverride = enc; }
+export function getRuntimeEncodingOverride(): string | null { return runtimeEncodingOverride; }
 
 // Return preferred encoding by key (nut -> cp949, otherwise cp950)
 export function encodingForKey(key: string): string {
-  const lower = key.toLowerCase();
+  try {
+    const cfg = vscode.workspace.getConfiguration();
+    const mode = (cfg.get<string>('pvf.encodingMode', 'AUTO') || 'AUTO').toUpperCase();
+    const lower = key.toLowerCase();
+    if (mode === 'AUTO') {
   if (lower.endsWith('.nut')) return 'cp949';
+  if (runtimeEncodingOverride) return runtimeEncodingOverride;
   return 'cp950';
+    }
+    switch (mode) {
+      case 'KR': return 'cp949';
+      case 'TW': return 'cp950';
+      case 'CN': return 'gb18030';
+      case 'JP': return 'shift_jis';
+      case 'UTF8': return 'utf8';
+      default: return 'cp950';
+    }
+  } catch {
+    // 回退旧逻辑
+    const lower = key.toLowerCase();
+    if (lower.endsWith('.nut')) return 'cp949';
+    return 'cp950';
+  }
 }
 
 // Text-like extensions
@@ -41,7 +67,7 @@ export function detectEncoding(key: string, bytes: Uint8Array): string {
 }
 
 export function isTextEncoding(enc: string): boolean {
-  return enc === 'utf16le' || enc === 'utf16be' || enc === 'cp949' || enc === 'cp950' || enc === 'utf8';
+  return enc === 'utf16le' || enc === 'utf16be' || enc === 'cp949' || enc === 'cp950' || enc === 'utf8' || enc === 'gb18030' || enc === 'shift_jis';
 }
 
 export function isPrintableText(text: string): boolean {

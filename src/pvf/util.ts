@@ -1,5 +1,6 @@
 import { PvfFile } from './pvfFile';
 import { StringTable } from './stringTable';
+import { encodingForKey } from './helpers';
 import * as iconv from 'iconv-lite';
 
 // File name checksum compatible with pvfUtility DataHelper.GetFileNameHashCode
@@ -17,7 +18,7 @@ export function renderStringTableText(fileList: Map<string, PvfFile>, existing?:
   const f = fileList.get('stringtable.bin');
   if (!f) return '';
   const bytes = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-  const st = new StringTable('cp950');
+  const st = new StringTable(encodingForKey('stringtable.bin'));
   st.load(bytes);
   return st.dumpText();
 }
