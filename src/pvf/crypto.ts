@@ -53,6 +53,19 @@ export class PvfCrypto {
     }
     return out;
   }
+
+  // 更快：假设 source 至少有 truelen 字节（调用方保证写入前补齐），利用 Uint32Array 视图
+  static encryptFast(source: Uint8Array, len: number, checksum: number): Uint8Array {
+    const key = 2175242257 >>> 0;
+    const truelen = (len + 3) & -4;
+    const out = new Uint8Array(truelen);
+    const in32 = new Uint32Array(source.buffer, source.byteOffset, Math.ceil(truelen / 4));
+    const out32 = new Uint32Array(out.buffer);
+    for (let i = 0; i < in32.length; i++) {
+      out32[i] = (PvfCrypto.rotl(in32[i], 6) ^ checksum ^ key) >>> 0;
+    }
+    return out;
+  }
 }
 
 // Build checksumDic like C# static ctor
