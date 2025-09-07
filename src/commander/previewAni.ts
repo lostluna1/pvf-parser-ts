@@ -10,6 +10,12 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
   // 按文件路径复用面板
   const panelsByFile = new Map<string, vscode.WebviewPanel>();
 
+  const stateKey = 'previewAni.lastState';
+  type PersistState = { axes: boolean; atk: boolean; dmg: boolean; als: boolean; sync: boolean; bg: string; speed: number; zoom: number };
+  function getDefaultState(): PersistState { return { axes: true, atk: true, dmg: true, als: true, sync: true, bg: 'dark', speed: 1, zoom: 1 }; }
+  function loadState(): PersistState { try { const v = context.globalState.get<PersistState>(stateKey); if (!v) return getDefaultState(); return { ...getDefaultState(), ...v }; } catch { return getDefaultState(); } }
+  async function saveState(s: PersistState) { try { await context.globalState.update(stateKey, s); } catch {} }
+
   async function refreshPreview(fileUri: vscode.Uri, panel: vscode.WebviewPanel) {
     const doc = await vscode.workspace.openTextDocument(fileUri);
     const text = doc.getText();
@@ -34,7 +40,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     const out = vscode.window.createOutputChannel('PVF');
     // 使用模块化解析与时间轴构建
 
-    const { framesSeq, groups } = parseAniText(text);
+  const { framesSeq, groups } = parseAniText(text);
     if (groups.size === 0) { vscode.window.showWarningMessage('未解析到任何帧，请检查 ANI 格式或文件内容'); return; }
 
   let timeline, albumMap;
@@ -122,7 +128,25 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     const toolkitSrc = panel.webview.asWebviewUri(toolkitUri).toString();
   const webview = panel.webview;
   const addsWithSeq = (lastAlsMeta?.adds||[]).map((a,i)=>({id:a.id, relLayer:a.relLayer, order:a.order, kind:a.kind, seq:i}));
-  panel.webview.html = buildPreviewHtml(context, webview, timeline, nonce, toolkitSrc, addsWithSeq, lastAlsMeta?.uses||[], []);
+  const initState = loadState();
+  panel.webview.html = buildPreviewHtml(context, webview, timeline, nonce, toolkitSrc, addsWithSeq, lastAlsMeta?.uses||[], [], initState as any);
+
+  // 计算 [FRAME###] 位置映射，存储到面板实例上
+  try {
+    const framePos = new Map<number, vscode.Position>();
+    const re = /^\s*\[FRAME(\d{3})\]/gmi;
+    const full = doc.getText();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(full)) !== null) {
+      const idx = parseInt(m[1], 10);
+      if (!Number.isNaN(idx)) {
+        const pos = doc.positionAt(m.index + (m[0].indexOf('[') >= 0 ? m[0].indexOf('[') : 0));
+        framePos.set(idx, pos);
+      }
+    }
+    (panel as any)._framePos = framePos; // attach
+    (panel as any)._aniDoc = doc;
+  } catch {}
   }
 
   context.subscriptions.push(
@@ -142,8 +166,42 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
       const panel = vscode.window.createWebviewPanel('pvfAni', '预览 ANI', vscode.ViewColumn.Two, { enableScripts: true, retainContextWhenHidden: true });
       panelsByFile.set(key, panel);
       panel.onDidDispose(() => { panelsByFile.delete(key); }, null, context.subscriptions);
+      let _suppressDocEvent = false; // 防止循环
+      let _lastAppliedFrameIdx = -1; // 已应用到文档的帧号（来自预览）
+      let _lastSentFrameIdx = -1; // 已发送给 webview 的帧号（来自文档）
+      let _syncEnabled = true;
       panel.webview.onDidReceiveMessage(async (msg) => {
         if (msg && msg.type === 'refresh') { await refreshPreview(fileUri, panel); return; }
+        if (msg && msg.type === 'syncToggle') { _syncEnabled = !!msg.enabled; return; }
+        if (msg && msg.type === 'persistState' && msg.state) {
+          try { await saveState(msg.state as PersistState); } catch {}
+          return;
+        }
+        if (msg && msg.type === 'frameChange') {
+          try {
+            const framePos: Map<number, vscode.Position> | undefined = (panel as any)._framePos;
+            const aniDoc: vscode.TextDocument | undefined = (panel as any)._aniDoc;
+            if (_syncEnabled && framePos && aniDoc && framePos.has(msg.idx)) {
+              const frameIdx: number = msg.idx;
+              if (frameIdx === _lastAppliedFrameIdx) return; // 已经在该帧上
+              const pos = framePos.get(frameIdx)!;
+              const visibleEditor = vscode.window.visibleTextEditors.find(e => e.document.uri.toString() === aniDoc.uri.toString());
+              const editor = visibleEditor ?? await vscode.window.showTextDocument(aniDoc, { viewColumn: vscode.ViewColumn.One, preserveFocus: true });
+              // 若光标已在目标行则不再移动
+              if (editor.selection.active.line === pos.line) { _lastAppliedFrameIdx = frameIdx; return; }
+              _suppressDocEvent = true;
+              try {
+                const sel = new vscode.Selection(pos, pos);
+                editor.selections = [sel];
+                editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+                _lastAppliedFrameIdx = frameIdx;
+              } finally {
+                setTimeout(()=>{ _suppressDocEvent = false; }, 80);
+              }
+            }
+          } catch {}
+          return;
+        }
   if (msg && msg.type === 'saveAls') {
           try {
             const uses: any[] = Array.isArray(msg.uses) ? msg.uses : [];
@@ -204,6 +262,24 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
   }
       }, undefined, context.subscriptions);
       await refreshPreview(fileUri, panel);
+      // 监听文档光标变化 -> 通知预览跳转帧
+    const selSub = vscode.window.onDidChangeTextEditorSelection(e => {
+        try {
+      if (_suppressDocEvent || !_syncEnabled) return;
+          if (e.textEditor.document.uri.toString() !== fileUri.toString()) return;
+          const doc = e.textEditor.document;
+          const lineText = doc.lineAt(e.selections[0].active.line).text;
+            const m = /^\s*\[FRAME(\d{3})\]/i.exec(lineText);
+            if (m) {
+              const idx = parseInt(m[1], 10);
+              if (!Number.isNaN(idx) && idx !== _lastSentFrameIdx) {
+                _lastSentFrameIdx = idx;
+                try { panel.webview.postMessage({ type: 'gotoFrame', idx }); } catch {}
+              }
+            }
+        } catch {}
+      });
+      panel.onDidDispose(()=> selSub.dispose());
       // 再次确保面板在右侧（防止 VS Code 由于布局状态放错）
       try { panel.reveal(vscode.ViewColumn.Two, false); } catch {}
     })

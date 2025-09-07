@@ -4,7 +4,7 @@ import { TimelineFrame } from './types';
 interface LayerMeta { id: string; relLayer: number; order: number; kind?: string; source?: string; seq?: number; }
 interface UseDecl { id: string; path: string; }
 
-export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vscode.Webview, timeline: TimelineFrame[], nonce: string, toolkitSrc: string, layers?: LayerMeta[], uses?: UseDecl[], _mainFrames?: any[]): string {
+export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vscode.Webview, timeline: TimelineFrame[], nonce: string, toolkitSrc: string, layers?: LayerMeta[], uses?: UseDecl[], _mainFrames?: any[], initState?: any): string {
   const csp = webview.cspSource;
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"/>
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${csp} data:; style-src ${csp} 'unsafe-inline'; font-src ${csp}; script-src ${csp} 'nonce-${nonce}';" />
@@ -111,16 +111,21 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                 <input id="toggleAls" type="checkbox" checked /> ALS图层
               </label>
             </div>
+            <div class="group">
+              <label style="display:flex;align-items:center;gap:6px">
+                <input id="syncToggle" type="checkbox" checked /> 同步光标
+              </label>
+            </div>
             <span class="grow"></span>
           </div>
           <div class="statusbar">
             <div class="stats">
-              <span>帧 <b id="lblFrame">1</b> / ${timeline.length}</span>
               <span>帧ID <b id="lblFrameId">0</b></span>
+              <span>帧 <b id="lblFrame">1</b> / ${timeline.length}</span>
               <span>延迟 <b id="lblDelay">0</b> ms</span>
               <span>图层 <b id="lblLayer">MAIN</b></span>
             </div>
-            <div class="tips">快捷键：空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，按住 Ctrl + 滚轮 缩放</div>
+            <div class="tips">空格播放/暂停，+/- 调速，←/→ 切帧；支持拖拽画布平移，按住 Ctrl + 滚轮 缩放</div>
           </div>
                 <div class="canvas-area"><canvas id="c" tabindex="0"></canvas></div>
               </div>
@@ -130,6 +135,7 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
          const timeline=${JSON.stringify(timeline)};
          const layerMeta=${JSON.stringify(layers||[])};
          const useDecls=${JSON.stringify(uses||[])};
+         const initState=${JSON.stringify(initState||{})};
          // 主帧编辑数据已移除
            // 预处理：收集每个 ALS 图层的原始帧序列（按出现顺序）以便 start(=relLayer) 动态偏移重构
            const layerFrameStore = (()=>{
@@ -192,6 +198,21 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                const toggleAtk = document.getElementById('toggleAtk');
                const toggleDmg = document.getElementById('toggleDmg');
                const toggleAls = document.getElementById('toggleAls');
+               const syncToggle = document.getElementById('syncToggle');
+               let syncEnabled = true; if (syncToggle) syncEnabled = !!syncToggle.checked;
+               // 应用初始状态
+               try {
+                 if (initState && typeof initState === 'object') {
+                   if (typeof initState.axes === 'boolean' && toggleAxes) toggleAxes.checked = !!initState.axes;
+                   if (typeof initState.atk === 'boolean' && toggleAtk) toggleAtk.checked = !!initState.atk;
+                   if (typeof initState.dmg === 'boolean' && toggleDmg) toggleDmg.checked = !!initState.dmg;
+                   if (typeof initState.als === 'boolean' && toggleAls) toggleAls.checked = !!initState.als;
+                   if (typeof initState.sync === 'boolean' && syncToggle) { syncToggle.checked = !!initState.sync; syncEnabled = !!initState.sync; }
+                   if (typeof initState.bg === 'string' && bgSel) { const opt = Array.from(bgSel.querySelectorAll('vscode-option,option')).find(o=> o.getAttribute('value')===initState.bg); if(opt) bgSel.value = initState.bg; }
+                   if (typeof initState.speed === 'number' && speedEl) { speedEl.value = String(initState.speed); }
+                   if (typeof initState.zoom === 'number' && zoomEl) { zoomEl.value = String(initState.zoom); }
+                 }
+               } catch {}
                // layer panel elements
                const layerListEl = document.getElementById('layerList');
                const btnLayerUp = document.getElementById('btnLayerUp');
@@ -454,6 +475,14 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  lblFrameId.textContent=String(f.fid??idx);
                  lblDelay.textContent=String(f.delay);
                  lblLayer.textContent = (selectedLayerId && selectedLayerFrame===idx) ? selectedLayerId : 'MAIN';
+                  // 通知扩展当前帧（节流）
+                  if (vscodeApi && syncEnabled) {
+                    const now = Date.now();
+                    if (!window.__lastFrameNotify || now - window.__lastFrameNotify > 80 || idx === 0) {
+                      window.__lastFrameNotify = now;
+                      vscodeApi.postMessage({ type:'frameChange', idx });
+                    }
+                  }
                }
                function schedule(){
                  if(timer)clearTimeout(timer);
@@ -462,8 +491,9 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                  timer=setTimeout(()=>{idx=(idx+1)%timeline.length;drawFrame();schedule();},Math.max(16,f.delay/Math.max(0.01,speed)));
                }
                function setPlaying(p){playing=p;btnPlay.textContent=playing?'暂停':'播放';if(playing){drawFrame();schedule();}}
-               function setSpeed(v){speed=v; if(speedEl) speedEl.value=String(v); lblSpeed.textContent=v.toFixed(2)+'x';}
-               function setZoom(v){sceneZoom=v; if(zoomEl) zoomEl.value=String(v); lblZoom.textContent=Math.round(v*100)+'%'; drawFrame();}
+               function persist(){ if (vscodeApi) vscodeApi.postMessage({ type:'persistState', state: { axes: !!(toggleAxes&&toggleAxes.checked), atk: !!(toggleAtk&&toggleAtk.checked), dmg: !!(toggleDmg&&toggleDmg.checked), als: !!(toggleAls&&toggleAls.checked), sync: syncEnabled, bg: bgSel?bgSel.value:'dark', speed, zoom: sceneZoom } }); }
+               function setSpeed(v){speed=v; if(speedEl) speedEl.value=String(v); lblSpeed.textContent=v.toFixed(2)+'x'; persist();}
+               function setZoom(v){sceneZoom=v; if(zoomEl) zoomEl.value=String(v); lblZoom.textContent=Math.round(v*100)+'%'; drawFrame(); persist();}
                btnPlay.textContent = '播放';
                btnPlay.addEventListener('click',()=>setPlaying(!playing));
                btnPrev.addEventListener('click',()=>{idx=(idx-1+timeline.length)%timeline.length;drawFrame();});
@@ -471,12 +501,13 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                if (btnRefresh) btnRefresh.addEventListener('click',()=>{ if (vscodeApi) vscodeApi.postMessage({ type:'refresh' }); else location.reload(); });
                speedEl.addEventListener('input',()=>setSpeed(parseFloat(speedEl.value)));
                zoomEl.addEventListener('input',()=>setZoom(parseFloat(zoomEl.value)));
-               bgSel.addEventListener('change',()=>{ applyBg(bgSel.value); drawFrame(); });
+               bgSel.addEventListener('change',()=>{ applyBg(bgSel.value); drawFrame(); persist(); });
                // toggle overlays should redraw immediately
-               if (toggleAxes) toggleAxes.addEventListener('change', ()=> drawFrame());
-               if (toggleAtk) toggleAtk.addEventListener('change', ()=> drawFrame());
-               if (toggleDmg) toggleDmg.addEventListener('change', ()=> drawFrame());
-               if (toggleAls) toggleAls.addEventListener('change', ()=> drawFrame());
+               if (toggleAxes) toggleAxes.addEventListener('change', ()=> { drawFrame(); persist(); });
+               if (toggleAtk) toggleAtk.addEventListener('change', ()=> { drawFrame(); persist(); });
+               if (toggleDmg) toggleDmg.addEventListener('change', ()=> { drawFrame(); persist(); });
+               if (toggleAls) toggleAls.addEventListener('change', ()=> { drawFrame(); persist(); });
+               if (syncToggle) syncToggle.addEventListener('change', ()=> { syncEnabled = !!syncToggle.checked; if (vscodeApi) vscodeApi.postMessage({ type:'syncToggle', enabled: syncEnabled }); persist(); });
                // mouse pan + wheel zoom
                let dragging=false, lastX=0, lastY=0;
                canvas.addEventListener('mousedown',(e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.style.cursor='grabbing'; });
@@ -549,11 +580,25 @@ export function buildPreviewHtml(context: vscode.ExtensionContext, webview: vsco
                renderLayerList();
                // 主帧列表渲染调用已移除
                // default centered display
-               setSpeed(1.0); setZoom(1.0);
+               setSpeed(initState && typeof initState.speed==='number'? initState.speed : 1.0);
+               setZoom(initState && typeof initState.zoom==='number'? initState.zoom : 1.0);
+               applyBg(initState && typeof initState.bg==='string'? initState.bg : 'dark');
                // trigger initial size and first draw
                resizeCanvas();
                schedule();
                setTimeout(()=>{try{canvas.focus();}catch{}},0);
+               // 接收来自扩展的跳帧指令
+      window.addEventListener('message',(ev)=>{
+                  try {
+                    const msg = ev.data;
+        if (msg && msg.type === 'gotoFrame' && syncEnabled) {
+                      const n = parseInt(msg.idx, 10);
+                      if (!Number.isNaN(n) && n >=0 && n < timeline.length) {
+                        idx = n; drawFrame();
+                      }
+                    }
+                  } catch {}
+               });
              }
              (function ensureToolkit(){
                const hasCE = !!(window.customElements);

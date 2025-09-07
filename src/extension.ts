@@ -146,6 +146,43 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 注册脚本语言特性 (.act 等)
     registerScriptLanguages(context);
+
+    // 启动时可选择自动关闭被 VS Code session 恢复的 pvf: 虚拟编辑器标签
+    try {
+        const cfg = vscode.workspace.getConfiguration();
+        const autoClose = cfg.get<boolean>('pvf.closeVirtualEditorsOnStartup', true);
+        if (autoClose) {
+            // 延迟一点点等 VS Code 恢复完成
+            setTimeout(async () => {
+                try {
+                    const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.scheme === 'pvf');
+                    for (const ed of editors) {
+                        try { await vscode.window.showTextDocument(ed.document, { preview: true, preserveFocus: true }); } catch {}
+                        // 使用内置命令关闭活动编辑器
+                        try { await vscode.commands.executeCommand('workbench.action.closeActiveEditor'); } catch {}
+                    }
+                } catch {}
+            }, 800);
+        }
+    } catch {}
+
+    // 首次激活或尚未提示时，提示用户可调整编码设置
+    (async () => {
+        const shownKey = 'pvf.encodingHintShown';
+        const already = context.globalState.get<boolean>(shownKey, false);
+        const cfg = vscode.workspace.getConfiguration();
+        const autoShow = cfg.get<boolean>('pvf.encoding.showHintOnStartup', true); // 预留未来可扩展（当前未在 package.json 暴露）
+        if (!already && autoShow) {
+            const actionOpen = '打开设置';
+            const actionNever = '不再提示';
+            const pick = await vscode.window.showInformationMessage('如果打开 PVF / 脚本文件出现乱码，可在设置中调整PVF编码格式(TW/CN/KR)。', actionOpen, actionNever);
+            if (pick === actionOpen) {
+                try { await vscode.commands.executeCommand('workbench.action.openSettings', 'pvf.encodingMode'); } catch {}
+            } else if (pick === actionNever) {
+                try { await context.globalState.update(shownKey, true); } catch {}
+            }
+        }
+    })();
 }
 
 export function deactivate() { }

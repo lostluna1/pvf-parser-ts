@@ -83,6 +83,11 @@
           "enum": ["AUTO", "KR", "TW", "CN", "JP", "UTF8"],
           "default": "AUTO",
           "description": "文本解码基准：KR=cp949, TW=cp950, CN=gb18030, JP=shift_jis, UTF8=utf8；AUTO 时保持原逻辑 (.nut=cp949 其他=cp950)。影响读取/写入文本与 stringtable。"
+        },
+        "pvf.closeVirtualEditorsOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "启动/重载 VS Code 时自动关闭上次遗留的 pvf: 虚拟文件标签页，防止自动恢复。"
         }
       }
     },
@@ -206,12 +211,12 @@
         },
         {
           "command": "pvf.savePack",
-          "when": "view == pvfExplorerView",
+          "when": "view == pvfExplorerView && pvf.hasOpenPack",
           "group": "navigation@2"
         },
         {
           "command": "pvf.savePackInPlace",
-          "when": "view == pvfExplorerView",
+          "when": "view == pvfExplorerView && pvf.hasOpenPack",
           "group": "navigation@3"
         }
       ],

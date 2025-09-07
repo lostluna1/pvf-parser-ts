@@ -29,8 +29,12 @@ export function registerPvfFileOps(context: vscode.ExtensionContext, deps: Deps)
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '打开 PVF…' }, async (p) => {
         const t0 = Date.now(); output.appendLine(`[PVF] open start: ${uris[0].fsPath}`); await model.open(uris[0].fsPath, (n: number) => { p.report({ increment: 0, message: `${n}%` }); }); const ms = Date.now() - t0; output.appendLine(`[PVF] open done in ${ms}ms (parsed header+tree only)`);
       }); tree.refresh(); deco.refreshAll();
+      try { await vscode.commands.executeCommand('setContext', 'pvf.hasOpenPack', true); } catch {}
     }),
     vscode.commands.registerCommand('pvf.savePack', async () => {
+      if (!model || !(model as any).pvfPath) {
+        vscode.window.showWarningMessage('尚未打开任何 PVF 文件'); return;
+      }
       const dest = await vscode.window.showSaveDialog({ filters: { 'PVF': ['pvf'] } }); if (!dest) { return; }
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: '保存 PVF…' }, async (p) => {
         let last = 0; const ok = await model.save(dest.fsPath, (n: number) => { const inc = Math.max(0, Math.min(100, n) - last); last = Math.max(last, Math.min(100, n)); p.report({ increment: inc, message: `${last}%` }); });
