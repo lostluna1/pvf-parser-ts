@@ -174,11 +174,11 @@
       },
       {
         "command": "pvf.savePack",
-        "title": "保存 PVF 封包"
+        "title": "另存PVF 封包"
       },
       {
         "command": "pvf.savePackInPlace",
-        "title": "保存到当前文件"
+        "title": "保存当前PVF 封包"
       },
       {
         "command": "pvf.exportFile",
@@ -325,10 +325,13 @@
   "devDependencies": {
     "@types/node": "^20.19.11",
     "@types/vscode": "^1.103.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@types/sqlite3": "^3.1.11"
   },
   "dependencies": {
   "iconv-lite": "^0.6.3",
-  "@vscode/webview-ui-toolkit": "^1.4.0"
+  "@vscode/webview-ui-toolkit": "^1.4.0",
+  "sqlite3": "^5.1.7",
+  "sqlite": "^5.1.1"
   }
 }
