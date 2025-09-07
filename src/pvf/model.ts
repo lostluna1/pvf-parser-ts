@@ -9,9 +9,10 @@ import { StringView } from './stringView';
 import { openImpl, saveImpl, readAndDecryptImpl } from './modelIO';
 import { decompileBinaryAni } from './binaryAni';
 import { compileBinaryAni } from './aniCompiler';
-import { encodingForKey, isTextByExtension, detectEncoding, isTextEncoding, isPrintableText, formatListText } from './helpers';
+import { encodingForKey, isTextByExtension, detectEncoding, isTextEncoding, isPrintableText } from './helpers';
 import { getFileNameHashCode as utilGetFileNameHashCode, renderStringTableText as utilRenderStringTableText } from './util';
 import { decompileScript } from './scriptDecompiler';
+import { decompileLst } from './lstDecompiler';
 import { buildMetadataMaps, parseMetadataForKeys } from './metadata';
 
 export interface Progress { (n: number): void }
@@ -50,13 +51,13 @@ export class PvfModel {
       const cfg = vscodeMod.workspace.getConfiguration();
       const mode = (cfg.get<string>('pvf.encodingMode', 'AUTO') || 'AUTO').toUpperCase();
       if (mode === 'AUTO') {
-  const { setRuntimeEncodingOverride, getRuntimeEncodingOverride } = await import('./helpers.js');
+        const { setRuntimeEncodingOverride, getRuntimeEncodingOverride } = await import('./helpers.js');
         if (!getRuntimeEncodingOverride()) {
           const stFile = this.getFileByKey('stringtable.bin');
           if (stFile) {
             const raw = await this.readAndDecrypt(stFile);
             const slice = raw.subarray(0, stFile.dataLen);
-            const candidates = ['gb18030','cp950','cp949','shift_jis','utf8'];
+            const candidates = ['gb18030', 'cp950', 'cp949', 'shift_jis', 'utf8'];
             let bestEnc: string | null = null; let bestScore = -1;
             for (const enc of candidates) {
               try {
@@ -64,10 +65,10 @@ export class PvfModel {
                 // 评分：可打印比例 + 常见汉字/假名出现加权
                 const n = Math.min(txt.length, 8000); if (n === 0) continue;
                 let printable = 0, cjk = 0;
-                for (let i=0;i<n;i++) {
+                for (let i = 0; i < n; i++) {
                   const c = txt.charCodeAt(i);
-                  if (c === 9 || c===10 || c===13 || (c>=32 && c!==127)) printable++;
-                  if ((c >= 0x4e00 && c <= 0x9fff) || (c>=0x3040 && c<=0x30ff)) cjk++;
+                  if (c === 9 || c === 10 || c === 13 || (c >= 32 && c !== 127)) printable++;
+                  if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3040 && c <= 0x30ff)) cjk++;
                 }
                 const score = (printable / n) + cjk * 0.0005; // 假设普通文本含 CJK 则略加分
                 if (score > bestScore) { bestScore = score; bestEnc = enc; }
@@ -76,7 +77,7 @@ export class PvfModel {
             if (bestEnc && bestEnc !== 'cp950') {
               setRuntimeEncodingOverride(bestEnc);
               // 重新加载 stringtable 以使用新编码
-              try { await this.loadStringAssets(); } catch {}
+              try { await this.loadStringAssets(); } catch { }
             }
           }
         }
@@ -169,9 +170,15 @@ export class PvfModel {
     // - stringtable.bin：渲染为可读文本（索引+字符串）
     // - 其他：原样字节
     if (f.isScriptFile) {
-      let text = this.decompileScript(f);
       const lowerKey = key.toLowerCase();
-      if (lowerKey.endsWith('.lst')) text = formatListText(text);
+      let text: string;
+      if (lowerKey.endsWith('.lst')) {
+        // Prefer structured LST decompile (two-line per entry). Fallback to generic script.
+        text = decompileLst(this, f, lowerKey) || this.decompileScript(f);
+      } else {
+        text = this.decompileScript(f);
+      }
+      // .lst 已直接使用专用 decompiler 输出，无需额外格式化
       // 若是脚本形式但扩展是 .ani.als/.als，也记录原始字节（用于 HexDiff）
       if ((lowerKey.endsWith('.ani.als') || lowerKey.endsWith('.als')) && !this.originalAlsBytes.has(lowerKey)) {
         const slice = raw.subarray(0, f.dataLen).slice();
@@ -199,8 +206,8 @@ export class PvfModel {
       }
     }
     if (lower.endsWith('.nut')) {
-      // .nut 始终按 encodingForKey 允许配置覆盖（KR 模式下仍为 cp949）
-      const text = iconv.decode(Buffer.from(raw.subarray(0, f.dataLen)), encodingForKey(lower));
+      // 强制以 KR (cp949) 解码 .nut 文件（忽略全局编码设置）
+      const text = iconv.decode(Buffer.from(raw.subarray(0, f.dataLen)), 'cp949');
       const out = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(text, 'utf8')]);
       return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
     }
@@ -273,10 +280,10 @@ export class PvfModel {
         f.changed = true;
         return true;
       }
-  // Fallback: 保持 UTF-8 + BOM（避免回退到单字节导致再打开乱码）
-  const utf8 = Buffer.from(text, 'utf8');
-  const withBom = Buffer.concat([Buffer.from([0xEF,0xBB,0xBF]), utf8]);
-  f.writeFileData(new Uint8Array(withBom.buffer, withBom.byteOffset, withBom.byteLength));
+      // Fallback: 保持 UTF-8 + BOM（避免回退到单字节导致再打开乱码）
+      const utf8 = Buffer.from(text, 'utf8');
+      const withBom = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), utf8]);
+      f.writeFileData(new Uint8Array(withBom.buffer, withBom.byteOffset, withBom.byteLength));
       f.changed = true;
       return true;
     }
@@ -316,9 +323,9 @@ export class PvfModel {
         }
         f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
       } else {
-  // 非原始 meta 情况：先尝试当前区域主编码 -> 回退 encodingForKey
-  let chosen = encodingForKey(lower.replace('.ani.als', '.ani'));
-  try { iconv.encode('test', chosen); } catch { chosen = 'utf8'; }
+        // 非原始 meta 情况：先尝试当前区域主编码 -> 回退 encodingForKey
+        let chosen = encodingForKey(lower.replace('.ani.als', '.ani'));
+        try { iconv.encode('test', chosen); } catch { chosen = 'utf8'; }
         const encoded = iconv.encode(text, chosen);
         f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       }
@@ -356,8 +363,8 @@ export class PvfModel {
         }
         f.writeFileData(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
       } else {
-  let chosen = encodingForKey(lower);
-  try { iconv.encode('test', chosen); } catch { chosen = 'utf8'; }
+        let chosen = encodingForKey(lower);
+        try { iconv.encode('test', chosen); } catch { chosen = 'utf8'; }
         const encoded = iconv.encode(text, chosen);
         f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       }
@@ -398,7 +405,7 @@ export class PvfModel {
     // 如果文本以 #PVF_File 开头，也按脚本编译（应对某些最初未识别为脚本的情况）
     {
       const prefix = Buffer.from(content.subarray(0, Math.min(16, content.length))).toString('utf8');
-      if (prefix.startsWith('#PVF_File')) {
+      if (!lower.endsWith('.nut') && prefix.startsWith('#PVF_File')) {
         let text = Buffer.from(content).toString('utf8');
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
         if (!this.strtable) this.strtable = new StringTable(encodingForKey('stringtable.bin'));
@@ -413,7 +420,9 @@ export class PvfModel {
     }
 
     // 额外尝试：即便不是已识别脚本，也尝试把文本编译为脚本源（便于新建文件后直接写入脚本）
+    // NOTE: .nut 文件应保持为普通文本，不尝试 PVF 二进制脚本编译，否则会被误转成 #PVF_File 结构
     try {
+      if (lower.endsWith('.nut')) throw new Error('skip generic compile for .nut');
       // 仅当其不是原生脚本的 ALS 才跳过；脚本型 .ani.als/.als 需保留编译行为
       if ((lower.endsWith('.ani.als') || (lower.endsWith('.als') && !lower.endsWith('.ani.als')))
         && !f.isScriptFile) {
@@ -436,11 +445,12 @@ export class PvfModel {
       // ignore compile failures and continue fallback
     }
 
-  // .nut：UTF-8 文本 -> 目标编码 (默认 AUTO 下为 cp949)
+    // .nut：UTF-8 文本 -> 目标编码 (默认 AUTO 下为 cp949)
     if (lower.endsWith('.nut')) {
       let text = Buffer.from(content).toString('utf8');
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-  const encoded = iconv.encode(text, encodingForKey(lower));
+      // 强制使用 cp949 保存 .nut
+      const encoded = iconv.encode(text, 'cp949');
       f.writeFileData(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
       f.changed = true;
       return true;
@@ -471,7 +481,7 @@ export class PvfModel {
     if (!f) return 0;
     if (f.isScriptFile) {
       let text = this.decompileScript(f);
-      if (key.toLowerCase().endsWith('.lst')) text = formatListText(text);
+      // .lst 已直接使用专用 decompiler 输出
       return Buffer.byteLength(text, 'utf8') + 3;
     }
     const lower = key.toLowerCase();
@@ -481,7 +491,8 @@ export class PvfModel {
     }
     if (lower.endsWith('.nut')) {
       const src = f.data ? f.data.subarray(0, f.dataLen) : new Uint8Array();
-  const text = iconv.decode(Buffer.from(src), encodingForKey(lower));
+      // 计算大小时同样固定 cp949 -> UTF-8
+      const text = iconv.decode(Buffer.from(src), 'cp949');
       return Buffer.byteLength(text, 'utf8') + 3;
     }
     if (isTextByExtension(lower)) {
@@ -530,7 +541,7 @@ export class PvfModel {
     const k = key.toLowerCase();
     if (this.fileList.has(k)) return false;
     // default checksum and offsets; zero-length file
-  const nameBytes = iconv.encode(k, encodingForKey(k));
+    const nameBytes = iconv.encode(k, encodingForKey(k));
     const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
@@ -547,7 +558,7 @@ export class PvfModel {
     // Represent folder by an entry with zero-length name and no data; keep as non-file by not marking as file in entries (we use presence of trailing entries to show folder)
     // We'll create a hidden placeholder file named `${k}/.folder` so folder exists in listings
     const placeholderKey = `${k}/.folder`;
-  const nameBytes = iconv.encode(placeholderKey, encodingForKey(placeholderKey));
+    const nameBytes = iconv.encode(placeholderKey, encodingForKey(placeholderKey));
     const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, 0, 0, 0);
     pf.writeFileData(new Uint8Array(0));
     pf.changed = true;
@@ -582,15 +593,15 @@ export class PvfModel {
     const st = this.fileList.get('stringtable.bin');
     if (st) {
       const bytes = await this.readAndDecrypt(st);
-  // 使用当前配置的基础编码 (stringtable 不区分扩展，传入一个代表性 key)
-  this.strtable = new StringTable(encodingForKey('stringtable.bin'));
+      // 使用当前配置的基础编码 (stringtable 不区分扩展，传入一个代表性 key)
+      this.strtable = new StringTable(encodingForKey('stringtable.bin'));
       this.strtable.load(bytes.subarray(0, st.dataLen));
     }
     const nstr = this.fileList.get('n_string.lst');
     if (nstr) {
       const bytes = await this.readAndDecrypt(nstr);
       this.strview = new StringView();
-  await this.strview.init(bytes.subarray(0, nstr.dataLen), this, encodingForKey('n_string.lst'));
+      await this.strview.init(bytes.subarray(0, nstr.dataLen), this, encodingForKey('n_string.lst'));
     }
   }
 
@@ -604,7 +615,7 @@ export class PvfModel {
       existing.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
       existing.changed = true;
     } else {
-  const nameBytes = iconv.encode('stringtable.bin', encodingForKey('stringtable.bin'));
+      const nameBytes = iconv.encode('stringtable.bin', encodingForKey('stringtable.bin'));
       const pf = new PvfFile(utilGetFileNameHashCode(nameBytes), nameBytes, bin.length, 0, 0);
       pf.writeFileData(new Uint8Array(bin.buffer, bin.byteOffset, bin.byteLength));
       pf.changed = true;

@@ -84,26 +84,3 @@ export function isPrintableText(text: string): boolean {
   }
   return (printable / n) > 0.85;
 }
-
-// Format .lst decompiled text: merge index+value lines, collapse blanks, ensure CRLF ending
-export function formatListText(text: string): string {
-  if (!text) return text;
-  let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  t = t.replace(/^#PVF_File\n+/, '#PVF_File\n');
-  t = t.replace(/\n{2,}/g, '\n');
-  const lines = t.split('\n');
-  const out: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const cur = lines[i];
-    const next = i + 1 < lines.length ? lines[i + 1] : undefined;
-    if (/^\s*\d+\s*$/.test(cur) && next && /^\s*`.*`\s*$/.test(next)) {
-      out.push(`${cur.trim()}\t${next.trim()}`);
-      i++; // skip next
-    } else {
-      out.push(cur);
-    }
-  }
-  let result = out.join('\n').trim();
-  result = result + '\r\n';
-  return result;
-}

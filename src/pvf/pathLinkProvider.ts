@@ -2,12 +2,23 @@ import * as vscode from 'vscode';
 import { PvfModel } from './model';
 
 export function registerPathLinkProvider(context: vscode.ExtensionContext, model: PvfModel) {
+  // Cache to avoid re-parsing huge .lst files repeatedly
+  interface CacheEntry { version: number; links: vscode.DocumentLink[]; truncated: boolean; }
+  const lstCache = new Map<string, CacheEntry>();
+
   const provider: vscode.DocumentLinkProvider = {
     provideDocumentLinks(document: vscode.TextDocument, _token: vscode.CancellationToken) {
       if (document.uri.scheme !== 'pvf') return [];
       const docPath = document.uri.path.replace(/^\//, '').toLowerCase();
       const links: vscode.DocumentLink[] = [];
       const lines = document.lineCount;
+
+      // Configuration (read each invocation to reflect user changes without reload)
+      const cfg = vscode.workspace.getConfiguration();
+      const maxLinesThreshold = cfg.get<number>('pvf.lstLinkMaxLines', 30000); // above: apply truncation strategy
+      const scanCap = cfg.get<number>('pvf.lstLinkScanCap', 12000); // maximum lines to scan when truncated
+      const maxLinks = cfg.get<number>('pvf.lstLinkMaxLinks', 6000); // cap total links for performance
+      const allowTwoLine = cfg.get<boolean>('pvf.lstLinkEnableTwoLinePattern', true);
 
       // helper: normalize relative segments against a base directory
       const joinAndNormalize = (baseDir: string, rel: string) => {
@@ -58,7 +69,15 @@ export function registerPathLinkProvider(context: vscode.ExtensionContext, model
 
       // If this is an .lst file, keep the previous special parsing (id + `path` forms)
       if (docPath.endsWith('.lst')) {
-        for (let i = 0; i < lines; i++) {
+        const cacheKey = document.uri.toString();
+        const large = lines > maxLinesThreshold;
+        const effectiveScanLines = large ? Math.min(lines, scanCap) : lines;
+        const cached = lstCache.get(cacheKey);
+        if (cached && cached.version === document.version && (!large || cached.truncated)) {
+          return cached.links; // reuse
+        }
+        let linkCount = 0;
+        for (let i = 0; i < effectiveScanLines; i++) {
           const line = document.lineAt(i).text;
           // match combined form: number\t`path`
           const m = line.match(/^\s*(\d+)\s*\t\s*`([^`]+)`\s*$/);
@@ -84,39 +103,44 @@ export function registerPathLinkProvider(context: vscode.ExtensionContext, model
             const args = JSON.stringify([entry]);
             const target = vscode.Uri.parse(`command:pvf.openFile?${args}`);
             links.push(new vscode.DocumentLink(range, target));
+            linkCount++;
+            if (linkCount >= maxLinks) break;
             continue;
           }
-          // match two-line form: number on this line, path on next
-          const mNumber = line.match(/^\s*(\d+)\s*$/);
-          if (mNumber && i + 1 < lines) {
-            const nextLine = document.lineAt(i + 1).text;
-            const mPath = nextLine.match(/^\s*`([^`]+)`\s*$/);
-            if (mPath) {
-              const filePath = mPath[1].toLowerCase();
-              // skip non-path-like entries (these are likely display names, not file paths)
-              if (!isLikelyPath(filePath)) { i++; continue; }
-              // only link the path portion on the next line (inside backticks)
-              const startTick = nextLine.indexOf('`');
-              let range: vscode.Range;
-              if (startTick >= 0) {
-                const endTick = nextLine.indexOf('`', startTick + 1);
-                if (endTick > startTick) {
-                  range = new vscode.Range(new vscode.Position(i + 1, startTick + 1), new vscode.Position(i + 1, endTick));
+          if (allowTwoLine && !large && linkCount < maxLinks) { // degrade: skip two-line pattern for large files
+            const mNumber = line.match(/^\s*(\d+)\s*$/);
+            if (mNumber && i + 1 < effectiveScanLines) {
+              const nextLine = document.lineAt(i + 1).text;
+              const mPath = nextLine.match(/^\s*`([^`]+)`\s*$/);
+              if (mPath) {
+                const filePath = mPath[1].toLowerCase();
+                if (!isLikelyPath(filePath)) { i++; continue; }
+                const startTick = nextLine.indexOf('`');
+                let range: vscode.Range;
+                if (startTick >= 0) {
+                  const endTick = nextLine.indexOf('`', startTick + 1);
+                  if (endTick > startTick) {
+                    range = new vscode.Range(new vscode.Position(i + 1, startTick + 1), new vscode.Position(i + 1, endTick));
+                  } else {
+                    range = new vscode.Range(new vscode.Position(i + 1, startTick), new vscode.Position(i + 1, nextLine.length));
+                  }
                 } else {
-                  range = new vscode.Range(new vscode.Position(i + 1, startTick), new vscode.Position(i + 1, nextLine.length));
+                  range = new vscode.Range(new vscode.Position(i, 0), new vscode.Position(i + 1, nextLine.length));
                 }
-              } else {
-                range = new vscode.Range(new vscode.Position(i, 0), new vscode.Position(i + 1, nextLine.length));
+                const resolved = resolveKey(filePath);
+                const entry = { key: resolved, name: resolved.split('/').pop() || resolved, isFile: true };
+                const args = JSON.stringify([entry]);
+                const target = vscode.Uri.parse(`command:pvf.openFile?${args}`);
+                links.push(new vscode.DocumentLink(range, target));
+                linkCount++;
+                if (linkCount >= maxLinks) break;
+                i++; // skip next line
               }
-              const resolved = resolveKey(filePath);
-              const entry = { key: resolved, name: resolved.split('/').pop() || resolved, isFile: true };
-              const args = JSON.stringify([entry]);
-              const target = vscode.Uri.parse(`command:pvf.openFile?${args}`);
-              links.push(new vscode.DocumentLink(range, target));
-              i++; // skip next line
             }
           }
+          if (linkCount >= maxLinks) break;
         }
+        lstCache.set(cacheKey, { version: document.version, links: links, truncated: large });
         return links;
       }
 
