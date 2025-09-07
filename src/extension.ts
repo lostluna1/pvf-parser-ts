@@ -74,6 +74,16 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('NPK 索引已重建');
     }));
 
+    // 插件设置入口：在视图标题“插件设置”按钮调用，聚焦 pvf.* 设置
+    context.subscriptions.push(vscode.commands.registerCommand('pvf.openSettings', async () => {
+        try {
+            // 使用扩展标识过滤自身设置；支持再附加 pvf. 前缀便于集中显示
+            await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:local.pvf-parser-ts pvf.');
+        } catch {
+            try { await vscode.commands.executeCommand('workbench.action.openSettings', 'pvf.'); } catch {}
+        }
+    }));
+
     // diagnostic command: show index status and storage path
     context.subscriptions.push(vscode.commands.registerCommand('pvf.showNpkIndexStatus', async () => {
         const storagePath = context.globalStorageUri.fsPath;

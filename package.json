@@ -140,7 +140,7 @@
       },
       {
         "command": "pvf.openPack",
-        "title": "打开 PVF 封包"
+        "title": "打开PVF"
       },
       {
         "command": "pvf.selectForCompare",
@@ -184,11 +184,11 @@
       },
       {
         "command": "pvf.savePack",
-        "title": "另存PVF 封包"
+        "title": "另存PVF"
       },
       {
         "command": "pvf.savePackInPlace",
-        "title": "保存当前PVF 封包"
+        "title": "保存PVF"
       },
       {
         "command": "pvf.exportFile",
@@ -206,9 +206,19 @@
         "command": "pvf.openFile",
         "title": "打开文件"
       }
+      ,
+      {
+        "command": "pvf.openSettings",
+        "title": "插件设置"
+      }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "pvf.openSettings",
+          "when": "view == pvfExplorerView",
+          "group": "navigation@0"
+        },
         {
           "command": "pvf.openPack",
           "when": "view == pvfExplorerView",
