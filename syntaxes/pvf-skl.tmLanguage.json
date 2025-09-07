@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF SKL",
+  "scopeName": "source.pvf-skl",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#string" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": { "patterns": [ { "name": "comment.line.number-sign.pvf-skl", "match": "#.*$" } ] },
+    "string": { "patterns": [ { "name": "string.quoted.backtick.pvf-skl", "begin": "`", "end": "`" } ] },
+    "number": { "patterns": [ { "name": "constant.numeric.pvf-skl", "match": "(?x) (?:0x[0-9A-Fa-f]+|[0-9]+(?:\\.[0-9]+)?)" } ] },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.pvf-skl",
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.pvf-skl" } },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.tag.end.pvf-skl" } },
+          "patterns": [ { "name": "entity.name.tag.pvf-skl", "match": "[A-Za-z_][A-Za-z0-9_ ]*" }, { "include": "#string" }, { "include": "#number" } ]
+        }
+      ]
+    }
+  },
+  "fileTypes": ["skl"],
+  "uuid": "a1b2c3d4-0000-4000-8000-000000000001"
+}

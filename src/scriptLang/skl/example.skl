@@ -1,0 +1,78 @@
+#PVF_File
+
+[name]
+	`御鬼之极`
+
+[name2]
+	`Ghost Release`
+
+[explain]
+	`    增加基本攻擊力和技能攻擊力。`
+
+[basic explain]
+	`    增加基本攻擊力和技能攻擊力。`
+
+[purchase cost]
+	20
+
+[/purchase cost]
+
+[required level]
+	75
+
+[required level range]
+	2
+
+[type]
+	`[passive]`
+
+[skill class]
+	3
+
+[maximum level]
+	30
+
+[growtype maximum level]
+	0	0	0	0	0	0
+
+[second growtype maximum level]
+	30	30	30	30	30	30	30	30	30	30	30	30
+
+[skill fitness second growtype]
+	2
+
+[/skill fitness second growtype]
+
+[icon]
+	`Character/Swordman/Effect/SkillIcon.img`	440
+	`Character/Swordman/Effect/SkillIcon.img`	441
+
+[static data]
+
+[/static data]
+
+[level info]
+	1	110	120	130	140	150	160	170	180	190	200	210	220	230	240	250	260	270	280	290	300	310	320	330	340	350	360	370	380	390	400
+
+[/level info]
+
+[pvp]
+	[level info]
+		1	1
+	[/level info]
+
+[/pvp]
+
+[death tower]
+
+[/death tower]
+
+[warroom]
+
+[/warroom]
+
+[level property]
+	1	99
+	`基本攻擊力和技能攻擊力增加 : <float1>%%`	-1	0	0.1
+
+[/level property]

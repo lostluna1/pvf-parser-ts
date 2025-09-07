@@ -30,6 +30,12 @@
         "aliases": ["ANI", "pvf-ani"],
         "extensions": [".ani"],
         "configuration": "./src/scriptLang/ani/language-configuration.json"
+      },
+      {
+        "id": "pvf-skl",
+        "aliases": ["SKL", "pvf-skl"],
+        "extensions": [".skl"],
+        "configuration": "./src/scriptLang/skl/language-configuration.json"
       }
     ],
     "grammars": [
@@ -42,6 +48,11 @@
         "language": "pvf-ani",
         "scopeName": "source.pvf-ani",
         "path": "./syntaxes/pvf-ani.tmLanguage.json"
+      },
+      {
+        "language": "pvf-skl",
+        "scopeName": "source.pvf-skl",
+        "path": "./syntaxes/pvf-skl.tmLanguage.json"
       }
     ],
     "configuration": {

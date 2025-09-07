@@ -41,6 +41,50 @@ export function* iterateBracketTags(lineText: string): Generator<{ isClose: bool
     }
 }
 
+// Helper: split a line into segments outside backtick string regions.
+// Maintains and returns updated inBacktick state (multi-line backtick blocks allowed).
+interface TagMatch { isClose: boolean; rawName: string; matchStart: number; matchEnd: number; nameStart: number; nameEnd: number }
+function extractTagsOutsideBackticks(lineText: string, inBacktick: boolean): { tags: TagMatch[]; inBacktickEnd: boolean } {
+    if (lineText.indexOf('`') === -1 && !inBacktick) {
+        // fast path
+        return { tags: Array.from(iterateBracketTags(lineText)), inBacktickEnd: false };
+    }
+    const segments: { text: string; offset: number }[] = [];
+    let last = 0;
+    for (let i = 0; i < lineText.length; i++) {
+        const ch = lineText[i];
+        if (ch === '`') {
+            if (!inBacktick) {
+                // segment before entering string
+                if (i > last) segments.push({ text: lineText.slice(last, i), offset: last });
+                inBacktick = true;
+                last = i + 1;
+            } else {
+                // closing string; ignore contents inside backticks entirely
+                inBacktick = false;
+                last = i + 1;
+            }
+        }
+    }
+    if (!inBacktick && last < lineText.length) {
+        segments.push({ text: lineText.slice(last), offset: last });
+    }
+    const tags: TagMatch[] = [];
+    for (const seg of segments) {
+        for (const t of iterateBracketTags(seg.text)) {
+            tags.push({
+                isClose: t.isClose,
+                rawName: t.rawName,
+                matchStart: t.matchStart + seg.offset,
+                matchEnd: t.matchEnd + seg.offset,
+                nameStart: t.nameStart + seg.offset,
+                nameEnd: t.nameEnd + seg.offset
+            });
+        }
+    }
+    return { tags, inBacktickEnd: inBacktick };
+}
+
 export function registerTagDiagnostics(context: vscode.ExtensionContext, langId: string, short: string) {
     const collection = vscode.languages.createDiagnosticCollection(`${langId}-tags`);
     context.subscriptions.push(collection);
@@ -49,13 +93,16 @@ export function registerTagDiagnostics(context: vscode.ExtensionContext, langId:
         if (doc.languageId !== langId) return;
         const tags = await loadTags(context, short);
         if (!tags.length) { collection.delete(doc.uri); return; }
-    const needCloseBase = new Set(tags.filter(t => t.closing).map(t => t.name.toLowerCase()));
-    const knownTags = new Set(tags.map(t => t.name.toLowerCase()));
-    const stack: { tag: string; line: number; start: number }[] = [];
+        const needCloseBase = new Set(tags.filter(t => t.closing).map(t => t.name.toLowerCase()));
+        const knownTags = new Set(tags.map(t => t.name.toLowerCase()));
+        const stack: { tag: string; line: number; start: number }[] = [];
         const diags: vscode.Diagnostic[] = [];
+        let inBacktick = false;
         for (let lineNum = 0; lineNum < doc.lineCount; lineNum++) {
             const text = doc.lineAt(lineNum).text;
-            for (const t of iterateBracketTags(text)) {
+            const res = extractTagsOutsideBackticks(text, inBacktick);
+            inBacktick = res.inBacktickEnd;
+            for (const t of res.tags) {
                 const lower = t.rawName.toLowerCase();
                 const range = new vscode.Range(lineNum, t.matchStart, lineNum, t.matchEnd);
                 if (!knownTags.has(lower)) {
@@ -121,6 +168,15 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
     context.subscriptions.push(vscode.languages.registerHoverProvider(langId, {
         async provideHover(doc, pos) {
             const lineText = doc.lineAt(pos.line).text;
+            // Need to know if position is inside backtick string: scan from start of document.
+            let inBacktick = false;
+            for (let ln = 0; ln <= pos.line; ln++) {
+                const lt = doc.lineAt(ln).text;
+                for (let i = 0; i < lt.length; i++) {
+                    if (lt[i] === '`') inBacktick = !inBacktick;
+                }
+            }
+            if (inBacktick) return; // inside backtick string: do not treat bracket tokens as tags
             for (const t of iterateBracketTags(lineText)) {
                 if (pos.character >= t.nameStart && pos.character <= t.nameEnd) {
                     const tags = await loadTags(context, short);
@@ -171,6 +227,13 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
         async provideCompletionItems(doc, pos) {
             const line = doc.lineAt(pos).text.slice(0, pos.character);
             if (!/\[[^\]]*$/.test(line)) return;
+            // Skip if cursor currently inside backtick multi-line string
+            let inBacktick = false;
+            for (let ln = 0; ln <= pos.line; ln++) {
+                const lt = doc.lineAt(ln).text;
+                for (let i = 0; i < lt.length; i++) if (lt[i] === '`') inBacktick = !inBacktick;
+            }
+            if (inBacktick) return;
             const tags = await loadTags(context, short);
                 const fullLine = doc.lineAt(pos.line).text;
                 const nextChar = pos.character < fullLine.length ? fullLine[pos.character] : '';
@@ -225,9 +288,12 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
             const closers = new Set(tags.filter(t => t.closing).map(t => t.name.toLowerCase()));
             const out: vscode.FoldingRange[] = [];
             const stack: { tag: string; line: number }[] = [];
+            let inBacktick = false;
             for (let i = 0; i < doc.lineCount; i++) {
                 const text = doc.lineAt(i).text;
-                for (const t of iterateBracketTags(text)) {
+                const res = extractTagsOutsideBackticks(text, inBacktick);
+                inBacktick = res.inBacktickEnd;
+                for (const t of res.tags) {
                     const lower = t.rawName.toLowerCase();
                     if (!t.isClose) {
                         let dynamicClosing = closers.has(lower);
@@ -263,9 +329,12 @@ export function provideSharedTagFeatures(context: vscode.ExtensionContext, langI
             const baseClosing = new Set(tags.filter(t => t.closing).map(t => t.name.toLowerCase()));
             const baseNonClosing = new Set(tags.filter(t => !t.closing).map(t => t.name.toLowerCase()));
             const stack: { tag: string }[] = [];
+            let inBacktick = false;
             for (let lineNum = 0; lineNum < doc.lineCount; lineNum++) {
                 const text = doc.lineAt(lineNum).text;
-                for (const t of iterateBracketTags(text)) {
+                const res = extractTagsOutsideBackticks(text, inBacktick);
+                inBacktick = res.inBacktickEnd;
+                for (const t of res.tags) {
                     const lower = t.rawName.toLowerCase();
                     const len = t.nameEnd - t.nameStart;
                     if (len <= 0) continue;
