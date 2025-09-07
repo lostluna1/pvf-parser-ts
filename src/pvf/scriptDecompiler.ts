@@ -61,6 +61,12 @@ export function decompileScript(model: any, f: PvfFile): string {
 
   while (i < items.length) {
     const { t, v } = items[i];
+    // 读取配置（每次调用以便动态生效）: true=只显示 `文本`；false=显示 <id::name`文本`>
+    let showSimplified = true;
+    try {
+      const cfg = require('vscode').workspace.getConfiguration();
+      showSimplified = cfg.get('pvf.script.convertStringLink', true);
+    } catch { /* ignore */ }
     if (isSection(t, v)) {
       const name = getStr(v);
       const nameLower = name.toLowerCase();
@@ -108,8 +114,15 @@ export function decompileScript(model: any, f: PvfFile): string {
         emitLine('`' + getStr(v) + '`', 1); i++; continue;
       }
       if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
-        const val = getStrLink(v, items[i + 1].v) || getStr(items[i + 1].v);
-        emitLine('`' + val + '`', 1); i += 2; continue;
+        const nameIdx = items[i + 1].v;
+        const nameRaw = getStr(nameIdx);
+        const val = getStrLink(v, nameIdx) || nameRaw;
+        if (showSimplified) {
+          emitLine('`' + val + '`', 1);
+        } else {
+          emitLine('<' + v + '::' + nameRaw + '`' + val + '`>', 1);
+        }
+        i += 2; continue;
       }
       // 其它数字：聚合一行
       const nums: string[] = [];
@@ -124,8 +137,12 @@ export function decompileScript(model: any, f: PvfFile): string {
 
     // string link 9+10
     if (t === 9 && i + 1 < items.length && items[i + 1].t === 10) {
-      const val = getStrLink(v, items[i + 1].v) || getStr(items[i + 1].v);
-      emitLine('`' + val + '`', 1); i += 2; continue;
+      const nameIdx = items[i + 1].v;
+      const nameRaw = getStr(nameIdx);
+      const val = getStrLink(v, nameIdx) || nameRaw;
+      if (showSimplified) emitLine('`' + val + '`', 1);
+      else emitLine('<' + v + '::' + nameRaw + '`' + val + '`>', 1);
+      i += 2; continue;
     }
     // string 7 + 后续数字
     if (t === 7) {

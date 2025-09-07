@@ -4,7 +4,19 @@ export class ScriptCompiler {
   constructor(private model: PvfModel) { }
   compile(scriptText: string): Buffer | null {
     try {
-      scriptText = scriptText.replace(/<(\d+::.+?)`.+?`>/g, '<$1``>');
+      // String link auto-conversion setting:
+      // pvf.script.convertStringLink = true  =>  <id::name`text`>  ->  `text`
+      // false => keep link form but blank out embedded text so compile uses id+name only (legacy behavior)
+      try {
+        // lazy require to avoid circular activation issues
+        const cfg = require('vscode').workspace.getConfiguration();
+  const auto = cfg.get('pvf.script.convertStringLink', true as boolean);
+        if (auto) {
+          scriptText = scriptText.replace(/<\d+::[^`<>]*`([^`]*?)`>/g, '`$1`');
+        } else {
+          scriptText = scriptText.replace(/<(\d+::.+?)`.+?`>/g, '<$1``>');
+        }
+      } catch { /* ignore config errors */ }
       const out: number[] = [0xB0, 0xD0];
       // 统一换行
       const normalized = scriptText.replace(/\r\n?|\u2028|\u2029/g, '\n');

@@ -88,6 +88,11 @@
           "type": "boolean",
           "default": true,
           "description": "启动/重载 VS Code 时自动关闭上次遗留的 pvf: 虚拟文件标签页，防止自动恢复。"
+        },
+        "pvf.script.convertStringLink": {
+          "type": "boolean",
+          "default": true,
+          "description": "解析器 :: 自动转换字符串链接 <id::name`文字`> 为 `文字`。关闭后仍保留链接形式 (文本被清空为 `` )。"
         }
       }
     },
