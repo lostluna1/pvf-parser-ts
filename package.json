@@ -1,19 +1,17 @@
 {
   "name": "pvf-parser-ts",
-  "displayName": "PVF Pack Explorer",
+  "displayName": "PVF Code",
   "description": "Open, browse and edit PVF pack files.",
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
-  "vscode": "^1.103.0"
+    "vscode": "^1.103.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onFileSystem:pvf",
-    "onLanguage:pvf-act",
-    "onLanguage:pvf-ani"
+    "onFileSystem:pvf"
   ],
   "icon": "media/icons8-源代码-48.png",
   "main": "./dist/extension.js",
@@ -21,20 +19,35 @@
     "languages": [
       {
         "id": "pvf-act",
-        "aliases": ["ACT", "pvf-act"],
-        "extensions": [".act"],
+        "aliases": [
+          "ACT",
+          "pvf-act"
+        ],
+        "extensions": [
+          ".act"
+        ],
         "configuration": "./src/scriptLang/act/language-configuration.json"
       },
       {
         "id": "pvf-ani",
-        "aliases": ["ANI", "pvf-ani"],
-        "extensions": [".ani"],
+        "aliases": [
+          "ANI",
+          "pvf-ani"
+        ],
+        "extensions": [
+          ".ani"
+        ],
         "configuration": "./src/scriptLang/ani/language-configuration.json"
       },
       {
         "id": "pvf-skl",
-        "aliases": ["SKL", "pvf-skl"],
-        "extensions": [".skl"],
+        "aliases": [
+          "SKL",
+          "pvf-skl"
+        ],
+        "extensions": [
+          ".skl"
+        ],
         "configuration": "./src/scriptLang/skl/language-configuration.json"
       }
     ],
@@ -80,7 +93,14 @@
         },
         "pvf.encodingMode": {
           "type": "string",
-          "enum": ["AUTO", "KR", "TW", "CN", "JP", "UTF8"],
+          "enum": [
+            "AUTO",
+            "KR",
+            "TW",
+            "CN",
+            "JP",
+            "UTF8"
+          ],
           "default": "AUTO",
           "description": "文本解码基准：KR=cp949, TW=cp950, CN=gb18030, JP=shift_jis, UTF8=utf8；AUTO 时保持原逻辑 (.nut=cp949 其他=cp950)。影响读取/写入文本与 stringtable。"
         },
@@ -109,19 +129,24 @@
       "pvfExplorer": [
         {
           "id": "pvfExplorerView",
-          "name": "PVF 包管理器",
+          "name": "",
           "icon": "codicon:archive"
         }
       ]
-  },
-  "iconThemes": [
-    {
-      "id": "pvfIconTheme",
-      "label": "PVF File Icons",
-      "path": "./media/pvf-icon-theme.json"
-    }
-  ],
-  "commands": [
+    },
+    "iconThemes": [
+      {
+        "id": "pvfIconTheme",
+        "label": "PVF File Icons",
+        "path": "./media/pvf-icon-theme.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "pvf.searchInPack",
+        "title": "搜索 PVF 内部文件",
+        "icon": "$(search)"
+      },
       {
         "command": "pvf.openAniEditor",
         "title": "ANI 编辑器"
@@ -136,7 +161,7 @@
       },
       {
         "command": "pvf.previewAni",
-    "title": "预览 ANI"
+        "title": "预览 ANI"
       },
       {
         "command": "pvf.openPack",
@@ -205,11 +230,17 @@
       {
         "command": "pvf.openFile",
         "title": "打开文件"
-      }
-      ,
+      },
       {
         "command": "pvf.openSettings",
         "title": "插件设置"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "pvf.searchInPack",
+        "key": "ctrl+alt+p",
+        "when": "pvf.hasOpenPack"
       }
     ],
     "menus": {
@@ -233,36 +264,41 @@
           "command": "pvf.savePackInPlace",
           "when": "view == pvfExplorerView && pvf.hasOpenPack",
           "group": "navigation@3"
+        },
+        {
+          "command": "pvf.searchInPack",
+          "when": "view == pvfExplorerView && pvf.hasOpenPack",
+          "group": "navigation@4"
         }
       ],
       "editor/context": [
         {
           "command": "pvf.previewAni",
-          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "when": "resourceExtname == .ani",
           "group": "navigation@9"
         }
       ],
       "editor/title": [
         {
           "command": "pvf.previewAni",
-          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "when": "resourceExtname == .ani",
           "group": "navigation@99"
         },
         {
           "command": "pvf.openAniEditor",
-          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "when": "resourceExtname == .ani",
           "group": "navigation@98"
         }
       ],
       "explorer/context": [
         {
           "command": "pvf.previewAni",
-          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "when": "resourceExtname == .ani",
           "group": "navigation@9"
         },
         {
           "command": "pvf.openAniEditor",
-          "when": "resourceExtname == .ani || resourceExtname == .ANI",
+          "when": "resourceExtname == .ani",
           "group": "navigation@9"
         }
       ],
@@ -338,20 +374,18 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-  "postcompile": "node scripts/copy-script-tags.cjs",
-  "vscode:prepublish": "npm run compile && npm run postcompile",
-  "check:icons": "node ./scripts/check-icons.cjs"
+    "postcompile": "node scripts/copy-script-tags.cjs",
+    "vscode:prepublish": "npm run compile && npm run postcompile",
+    "check:icons": "node ./scripts/check-icons.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",
     "@types/vscode": "^1.103.0",
-    "typescript": "^5.9.2",
-    "@types/sqlite3": "^3.1.11"
+    "typescript": "^5.9.2"
   },
   "dependencies": {
-  "iconv-lite": "^0.6.3",
-  "@vscode/webview-ui-toolkit": "^1.4.0",
-  "sqlite3": "^5.1.7",
-  "sqlite": "^5.1.1"
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "iconv-lite": "^0.6.3",
+    "sqlite3": "^5.1.7"
   }
 }

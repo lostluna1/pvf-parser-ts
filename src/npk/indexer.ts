@@ -1,19 +1,57 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
-// sqlite 运行时按需加载，避免在未安装 native 模块时导致激活报错
+// 仅使用 sqlite3，移除对 sqlite(包装库) 的依赖，手动 Promise 化所需 API
 let sqlite3: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-let sqliteOpen: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-type Database = any; // 简化类型（只用到 .all/.exec/.prepare）
+type RawDatabase = any; // 原始 sqlite3.Database
+type WrappedStmt = { run: (...args: any[]) => Promise<void>; finalize: () => Promise<void> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Database = { exec: (sql: string) => Promise<void>; all: (sql: string) => Promise<any[]>; prepare: (sql: string) => Promise<WrappedStmt> }; // eslint-disable-line @typescript-eslint/no-explicit-any
 try {
-  // 使用 require 兼容 CommonJS
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   sqlite3 = require('sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const sqlite = require('sqlite');
-  sqliteOpen = sqlite.open;
 } catch {
-  // 如果失败则稍后第一次使用时报错或回退
+  // ignore, 延迟到首次真正使用时报错
+}
+
+function wrapDatabase(raw: RawDatabase): Database {
+  return {
+    exec(sql: string) {
+      return new Promise<void>((resolve, reject) => {
+        raw.exec(sql, (err: unknown) => (err ? reject(err) : resolve()));
+      });
+    },
+    all(sql: string) {
+      return new Promise<any[]>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+        raw.all(sql, (err: unknown, rows: any[]) => (err ? reject(err) : resolve(rows))); // eslint-disable-line @typescript-eslint/no-explicit-any
+      });
+    },
+    prepare(sql: string) {
+      return new Promise<WrappedStmt>((resolve, reject) => {
+        const stmt = raw.prepare(sql, (err: unknown) => {
+          if (err) { reject(err); return; }
+          const wrapped: WrappedStmt = {
+            run: (...args: any[]) => new Promise<void>((res, rej) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+              stmt.run(...args, (e: unknown) => (e ? rej(e) : res()));
+            }),
+            finalize: () => new Promise<void>((res, rej) => {
+              stmt.finalize((e: unknown) => (e ? rej(e) : res()));
+            })
+          };
+          resolve(wrapped);
+        });
+      });
+    }
+  };
+}
+
+async function openDatabase(file: string): Promise<Database> {
+  return new Promise((resolve, reject) => {
+    // 使用默认模式读写创建
+    const raw = new sqlite3.Database(file, (err: unknown) => {
+      if (err) { reject(err); return; }
+      resolve(wrapDatabase(raw));
+    });
+  });
 }
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').toLowerCase();
@@ -27,8 +65,8 @@ async function getDb(context: vscode.ExtensionContext): Promise<Database> {
   const storage = context.globalStorageUri.fsPath;
   await fs.mkdir(storage, { recursive: true });
   const file = path.join(storage, 'npk-index.sqlite');
-  if (!sqliteOpen || !sqlite3) throw new Error('sqlite 模块未安装');
-  db = await sqliteOpen({ filename: file, driver: sqlite3.Database });
+  if (!sqlite3) throw new Error('sqlite3 模块未安装');
+  db = await openDatabase(file);
   await db.exec(`CREATE TABLE IF NOT EXISTS entries (
     key TEXT PRIMARY KEY,
     npk TEXT NOT NULL,
