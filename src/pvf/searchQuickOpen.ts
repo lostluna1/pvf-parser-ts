@@ -1,12 +1,6 @@
 import * as vscode from 'vscode';
 import { PvfModel } from './model';
-
-// 运行时动态加载 fuzzysort，避免未安装时直接崩溃
-let fuzzysort: any = null;
-try { // 尽量不在顶层 import，减少激活时间 & 允许缺失依赖降级
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  fuzzysort = require('fuzzysort');
-} catch { /* 忽略，后续走降级路径 */ }
+// 已去除 fuzzysort 依赖，改为简单多关键字子串过滤 + 轻量排序
 
 interface QuickPickItem extends vscode.QuickPickItem { key: string; }
 interface Entry { key: string; lower: string; base: string; }
@@ -46,20 +40,15 @@ function coarseFilter(tokens: string[], source: Entry[], baseSet?: Entry[], limi
   return out;
 }
 
-function fuzzyRank(query: string, candidates: Entry[], limit = 600): Entry[] {
-  if (!query) return candidates.slice(0, limit);
-  if (!fuzzysort) { // 降级：简单长度 + index 排序
-    const ql = query.length;
-    return candidates
-      .map(e => ({ e, p: e.lower.indexOf(query) }))
-      .filter(o => o.p >= 0)
-      .sort((a, b) => a.p - b.p || a.e.key.length - b.e.key.length)
-      .slice(0, limit)
-      .map(o => o.e);
-  }
-  // fuzzysort 正常使用：对 lower 字段打分
-  const r = fuzzysort.go(query, candidates, { key: 'lower', limit, threshold: -1000 });
-  return r.map((x: any) => x.obj as Entry);
+// 简单排序：优先匹配位置靠前，其次基名长度，再其次完整路径长度
+function simpleRank(tokens: string[], candidates: Entry[], limit = 600): Entry[] {
+  if (!tokens.length) return candidates.slice(0, limit);
+  const first = tokens[0];
+  return candidates
+    .map(e => ({ e, p: e.lower.indexOf(first) }))
+    .sort((a, b) => a.p - b.p || a.e.base.length - b.e.base.length || a.e.key.length - b.e.key.length)
+    .slice(0, limit)
+    .map(o => o.e);
 }
 
 export function registerSearchInPack(context: vscode.ExtensionContext, model: PvfModel) {
@@ -82,7 +71,7 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
     const index = builtIndex;
 
     const qp = vscode.window.createQuickPick<QuickPickItem>();
-    qp.placeholder = '搜索 (支持空格分隔多关键字, 先子串粗筛再模糊)';
+    qp.placeholder = '搜索 (空格分隔多关键字, 纯子串过滤)';
     qp.matchOnDescription = false; // 我们自己做过滤
     qp.matchOnDetail = false;
     qp.canSelectMany = false;
@@ -112,9 +101,7 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
       const base = prefixNarrow ? lastCoarse || index : index;
       const coarse = coarseFilter(tokens, index, prefixNarrow ? base : undefined);
       lastCoarse = coarse; // 保存用于增量
-      // fuzzy 使用整串（去空格）或第一个 token
-      const fuzzyPattern = tokens.join(' ');
-      const ranked = fuzzyRank(fuzzyPattern, coarse, 600);
+      const ranked = simpleRank(tokens, coarse, 600);
       qp.items = ranked.map(toItem);
       qp.title = `候选: ${coarse.length}${coarse.length >= 8000 ? '+' : ''}`;
     };

@@ -9,6 +9,7 @@ import { registerScriptLanguages } from './scriptLang/index';
 import * as indexer from './npk/indexer';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { registerSearchInPack } from './pvf/searchQuickOpen';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
@@ -26,6 +27,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register all commands from commander modules
     registerAllCommands(context, { model, tree, deco: deco as any, output });
+    // 注册快速搜索（模糊/多关键字）
+    registerSearchInPack(context, model);
 
     // 激活时自动构建（若尚未有索引且配置了根目录）
     (async () => {
