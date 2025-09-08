@@ -49,6 +49,18 @@
           ".skl"
         ],
         "configuration": "./src/scriptLang/skl/language-configuration.json"
+      },
+      {
+        "id": "pvf-lst",
+        "aliases": ["LST", "pvf-lst"],
+        "extensions": [".lst"],
+        "configuration": "./src/scriptLang/lst/language-configuration.json"
+      },
+      {
+        "id": "pvf-str",
+        "aliases": ["STR", "pvf-str"],
+        "extensions": [".str"],
+        "configuration": "./src/scriptLang/str/language-configuration.json"
       }
     ],
     "grammars": [
@@ -66,6 +78,16 @@
         "language": "pvf-skl",
         "scopeName": "source.pvf-skl",
         "path": "./syntaxes/pvf-skl.tmLanguage.json"
+      },
+      {
+        "language": "pvf-lst",
+        "scopeName": "source.pvf-lst",
+        "path": "./syntaxes/pvf-lst.tmLanguage.json"
+      },
+      {
+        "language": "pvf-str",
+        "scopeName": "source.pvf-str",
+        "path": "./syntaxes/pvf-str.tmLanguage.json"
       }
     ],
     "configuration": {

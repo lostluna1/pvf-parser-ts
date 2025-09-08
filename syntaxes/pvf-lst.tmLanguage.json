@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF LST",
+  "scopeName": "source.pvf-lst",
+  "fileTypes": ["lst"],
+  "patterns": [
+    { "include": "#header" },
+    { "include": "#comment" },
+    { "include": "#entry" }
+  ],
+  "repository": {
+    "header": {
+      "patterns": [
+        {
+          "name": "meta.header.pvf-lst",
+          "match": "^#PVF_File$"
+        }
+      ]
+    },
+    "comment": {
+      "patterns": [
+        { "name": "comment.line.number-sign.pvf-lst", "match": "#.*$" }
+      ]
+    },
+    "entry": {
+      "patterns": [
+        {
+          "name": "meta.entry.numeric-key.pvf-lst",
+          "match": "^(\\d+)(\\t)(.*)$",
+          "captures": {
+            "1": { "name": "constant.numeric.key.pvf-lst" },
+            "2": { "name": "punctuation.separator.key-value.pvf-lst" },
+            "3": { "name": "string.unquoted.value.pvf-lst" }
+          }
+        },
+        {
+          "name": "meta.entry.pvf-lst",
+          "match": "^(?:(?!#PVF_File)(?!#)([^\t\r\n]+))(\t)(.*)$",
+          "captures": {
+            "1": { "name": "entity.name.key.pvf-lst" },
+            "2": { "name": "punctuation.separator.key-value.pvf-lst" },
+            "3": { "name": "string.unquoted.value.pvf-lst" }
+          }
+        }
+      ]
+    }
+  }
+}

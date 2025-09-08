@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF STR",
+  "scopeName": "source.pvf-str",
+  "fileTypes": ["str"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#numericEntry" },
+    { "include": "#genericEntry" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        { "name": "comment.line.number-sign.pvf-str", "match": "#.*$" },
+        { "name": "comment.line.double-slash.pvf-str", "match": "//.*$" }
+      ]
+    },
+    "numericEntry": {
+      "patterns": [
+        {
+          "name": "meta.entry.numeric.pvf-str",
+          "begin": "^(?!(?:#|//))(\\d+)(>)",
+          "beginCaptures": {
+            "1": { "name": "constant.numeric.pvf-str" },
+            "2": { "name": "punctuation.separator.key-value.pvf-str" }
+          },
+          "end": "$",
+          "patterns": [ { "include": "#valueParts" } ]
+        }
+      ]
+    },
+    "genericEntry": {
+      "patterns": [
+        {
+          "name": "meta.entry.pvf-str",
+          "begin": "^(?!(?:#|//))([^>#\\r\\n]+?)(>)",
+          "beginCaptures": {
+            "1": { "name": "entity.name.tag.pvf-str" },
+            "2": { "name": "punctuation.separator.key-value.pvf-str" }
+          },
+          "end": "$",
+          "patterns": [ { "include": "#valueParts" } ]
+        }
+      ]
+    },
+    "valueParts": {
+      "patterns": [
+        { "match": "<[^>]+>", "name": "constant.other.placeholder.pvf-str" },
+        { "match": "[^<]+", "name": "string.unquoted.value.pvf-str" }
+      ]
+    }
+  }
+}
