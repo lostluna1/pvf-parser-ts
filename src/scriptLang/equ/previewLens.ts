@@ -152,6 +152,8 @@ interface EquInfo {
     iconDataUri?: string; // png data uri once loaded
     skillLevelUps?: { job: string; skillId: number; value: number }[]; // 技能等级加成
     elementalProperty?: string; // 属性攻击 (fire / ice / light / dark)
+    elementPropertyText?: string; // 属性攻击 中文描述
+    elementColor?: string; // 属性颜色 (CSS color)
 }
 
 async function tryLoadIconDataUri(extCtx: vscode.ExtensionContext, raw: { img: string; frame: number }): Promise<string | undefined> {
@@ -363,12 +365,10 @@ function parseEquContent(text: string): EquInfo {
     info.allActivestatusResistance = takeNum('all activestatus resistance');
     info.piercingResistance = takeNum('piercing resistance');
     const ep = takeStr('elemental property');
-    if (ep) {
-        if (/fire/i.test(ep)) info.elementalProperty = '火';
-        else if (/ice|water/i.test(ep)) info.elementalProperty = '冰';
-        else if (/light/i.test(ep)) info.elementalProperty = '光';
-        else if (/dark/i.test(ep)) info.elementalProperty = '暗';
-    }
+
+    info.elementPropertyText = getElementPropertyText(ep);
+    info.elementColor = getElementColor(ep);
+    console.log(ep, "elemental property");
     // 若未提供[elemental property]标签，但存在具体元素攻击数值，根据原始标签推断
     if (!info.elementalProperty) {
         if (collect['fire attack']) info.elementalProperty = '火';
@@ -488,6 +488,7 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
 <div style="color: #3fa7ff;">
   <div>${info.physicalCriticalHit != null ? `<span>物理暴击 +${info.physicalCriticalHit}%</span>` : ''}</div>
   <div>${info.magicalCriticalHit != null ? `<span>魔法暴击 +${info.magicalCriticalHit}%</span>` : ''}</div>
+  <div style="${info.elementColor ? `color: ${info.elementColor}` : ''}">${info.elementPropertyText}</div>
   <div>${info.attackSpeed != null ? `<span>攻击速度 +${info.attackSpeed/10}%</span>` : ''}</div>
   <div>${info.castSpeed != null ? `<span>施放速度 +${info.castSpeed/10}%</span>` : ''}</div>
   <div>${info.moveSpeed != null ? `<span>移动速度 +${info.moveSpeed / 10}%</span>` : ''}</div>
@@ -534,6 +535,28 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
 </body>
 </html>
     `;
+}
+
+function getElementPropertyText(ep?: string): string {
+    if (!ep) return '';
+    switch (ep.toLowerCase()) {
+        case '[light element]': return '光属性攻击';
+        case '[water element]': return '冰属性攻击';
+        case '[fire element]': return '火属性攻击';
+        case '[dark element]': return '暗属性攻击';
+        default: return ep;
+    }
+}
+
+function getElementColor(ep?: string): string {
+    if (!ep) return '#ccc';
+    switch (ep.toLowerCase()) {
+        case '[light element]': return '#FFDD00';
+        case '[water element]': return '#00A3E0';
+        case '[fire element]': return '#FF4C00';
+        case '[dark element]': return '#6F00FF';
+        default: return '#ccc';
+    }
 }
 
 function rarityToColor(r?: number): string {
