@@ -22,7 +22,8 @@ function buildIndex(keys: string[]): Entry[] {
 }
 
 function toItem(e: Entry): QuickPickItem {
-  return { key: e.key, label: e.base, detail: e.key };
+  // alwaysShow 以绕过 QuickPick 内部再次过滤（我们自定义过滤），detail 保留完整路径供用户查看/匹配
+  return { key: e.key, label: e.base, detail: e.key, alwaysShow: true } as QuickPickItem;
 }
 
 // 基础粗筛：tokens 全包含（子串）
@@ -71,9 +72,9 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
     const index = builtIndex;
 
     const qp = vscode.window.createQuickPick<QuickPickItem>();
-    qp.placeholder = '搜索 (空格分隔多关键字, 纯子串过滤)';
-    qp.matchOnDescription = false; // 我们自己做过滤
-    qp.matchOnDetail = false;
+  qp.placeholder = '搜索 (单关键字 子串过滤)';
+  qp.matchOnDescription = false; // 我们自己做过滤
+  qp.matchOnDetail = true; // 允许用户输入包含目录的路径直接匹配 detail
     qp.canSelectMany = false;
 
     // 初始：展示前 200
@@ -83,27 +84,33 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
     qp.onDidHide(() => { if (!disposed) qp.dispose(); disposed = true; });
 
     let debounceTimer: NodeJS.Timeout | null = null;
-    let lastQuery = '';
-    let lastCoarse: Entry[] | null = null;
+  let lastQuery = '';
 
     const run = (value: string) => {
       const rawQ = value.trim();
       if (rawQ === lastQuery) return;
       lastQuery = rawQ;
-      if (!rawQ) {
-        lastCoarse = null;
+  if (!rawQ) {
         qp.items = index.slice(0, 400).map(toItem);
         qp.title = undefined;
         return;
       }
-      const tokens = rawQ.toLowerCase().split(/\s+/).filter(Boolean);
-      const prefixNarrow = lastCoarse && tokens.length && rawQ.startsWith(tokens[0]) && value.length > 1;
-      const base = prefixNarrow ? lastCoarse || index : index;
-      const coarse = coarseFilter(tokens, index, prefixNarrow ? base : undefined);
-      lastCoarse = coarse; // 保存用于增量
-      const ranked = simpleRank(tokens, coarse, 600);
+      const token = rawQ.toLowerCase();
+      const candidates: Entry[] = [];
+      for (let i = 0; i < index.length; i++) {
+        const e = index[i];
+        if (e.lower.indexOf(token) !== -1) {
+          candidates.push(e);
+          if (candidates.length >= 8000) break; // 上限
+        }
+      }
+      const ranked = token ? candidates
+        .map(e => ({ e, p: e.lower.indexOf(token) }))
+        .sort((a, b) => a.p - b.p || a.e.base.length - b.e.base.length || a.e.key.length - b.e.key.length)
+        .slice(0, 600)
+        .map(o => o.e) : candidates.slice(0, 600);
       qp.items = ranked.map(toItem);
-      qp.title = `候选: ${coarse.length}${coarse.length >= 8000 ? '+' : ''}`;
+      qp.title = `候选: ${candidates.length}${candidates.length >= 8000 ? '+' : ''}`;
     };
 
     const schedule = (val: string) => {

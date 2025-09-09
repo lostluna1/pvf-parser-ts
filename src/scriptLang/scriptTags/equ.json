@@ -1,0 +1,983 @@
+{
+    "tags": [
+        {
+            "name": "packagable",
+            "description": "可打包/邮寄标记: 0=不可寄送(默认可)"
+        },
+        {
+            "name": "avatar select ability",
+            "closing": true,
+            "description": "角色选择附加能力块：行内 `[STAT]` `+|*` 数值；或 SKILL_LEVEL 职业 索引 等级\n`[HP MAX]`\n`[MP MAX]`\n`[PHYSICAL_ATTACK]`\n`[PHYSICAL_DEFENSE]`\n`[MAGICAL_ATTACK]`\n`[MAGICAL_DEFENSE]`\n`[EQUIPMENT_PHYSICAL_ATTACK]`\n`[EQUIPMENT_PHYSICAL_DEFENSE]`\n`[EQUIPMENT_MAGICAL_ATTACK]`\n`[EQUIPMENT_MAGICAL_DEFENSE]`\n`[ELEMENT_TOLERANCE_FIRE]`\n`[ELEMENT_TOLERANCE_WATER]`\n`[ELEMENT_TOLERANCE_DARK]`\n`[ELEMENT_TOLERANCE_LIGHT]`\n`[ELEMENT_TOLERANCE_ALL]`\n`[ACTIVESTATUS_TOLERANCE_SLOW]`\n`[ACTIVESTATUS_TOLERANCE_FREEZE]`\n`[ACTIVESTATUS_TOLERANCE_POISON]`\n`[ACTIVESTATUS_TOLERANCE_STUN]`\n`[ACTIVESTATUS_TOLERANCE_CURSE]`\n`[ACTIVESTATUS_TOLERANCE_BLIND]`\n`[ACTIVESTATUS_TOLERANCE_LIGHTNING]`\n`[ACTIVESTATUS_TOLERANCE_STONE]`\n`[ACTIVESTATUS_TOLERANCE_SLEEP]`\n`[ACTIVESTATUS_TOLERANCE_DEELEMENT]`\n`[ACTIVESTATUS_TOLERANCE_DEADLYSTRIKE]`\n`[ACTIVESTATUS_TOLERANCE_BLEEDING]`\n`[ACTIVESTATUS_TOLERANCE_PIERCE]`\n`[ACTIVESTATUS_TOLERANCE_STUCK]`\n`[ACTIVESTATUS_TOLERANCE_CONFUSE]`\n`[ACTIVESTATUS_TOLERANCE_HOLD]`\n`[ACTIVESTATUS_TOLERANCE_ALL]`\n`[INVENTORY_MAX_WEIGHT]`\n`[HP_REGENRATE]`\n`[MP_REGENRATE]`\n`[MP_REGENRATE_PERCENT_UP]`\n`[MOVE_SPEED]`\n`[ATTACK_SPEED]`\n`[CAST_SPEED]`\n`[HIT_RECOVERY]`\n`[JUMP_POWER]`\n`[CRITICAL]`\n`[SKILL_LEVEL]`"
+        },
+        {
+            "name": "PHYSICAL_ATTACK",
+            "description": "物理伤害加成"
+        },
+        {
+            "name": "PHYSICAL_DEFENSE",
+            "description": "物理防御加成"
+        },
+        {
+            "name": "MAGICAL_ATTACK",
+            "description": "魔法伤害加成"
+        },
+        {
+            "name": "MAGICAL_DEFENSE",
+            "description": "魔法防御加成"
+        },
+        {
+            "name": "EQUIPMENT_PHYSICAL_ATTACK",
+            "description": "装备物理攻击加成"
+        },
+        {
+            "name": "EQUIPMENT_PHYSICAL_DEFENSE",
+            "description": "装备物理防御加成"
+        },
+        {
+            "name": "EQUIPMENT_MAGICAL_ATTACK",
+            "description": "装备魔法攻击加成"
+        },
+        {
+            "name": "EQUIPMENT_MAGICAL_DEFENSE",
+            "description": "装备魔法防御加成"
+        },
+        {
+            "name": "ELEMENT_TOLERANCE_FIRE",
+            "description": "火属性抗性加成"
+        },
+        {
+            "name": "ELEMENT_TOLERANCE_WATER",
+            "description": "水属性抗性加成"
+        },
+        {
+            "name": "ELEMENT_TOLERANCE_DARK",
+            "description": "暗属性抗性加成"
+        },
+        {
+            "name": "ELEMENT_TOLERANCE_LIGHT",
+            "description": "光属性抗性加成"
+        },
+        {
+            "name": "ELEMENT_TOLERANCE_ALL",
+            "description": "所有属性抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_SLOW",
+            "description": "减速抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_FREEZE",
+            "description": "冰冻抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_POISON",
+            "description": "中毒抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_STUN",
+            "description": "眩晕抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_CURSE",
+            "description": "诅咒抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_BLIND",
+            "description": "失明抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_LIGHTNING",
+            "description": "感电抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_STONE",
+            "description": "石化抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_SLEEP",
+            "description": "睡眠抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_DEELEMENT",
+            "description": "元素剥离抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_DEADLYSTRIKE",
+            "description": "致命打击抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_BLEEDING",
+            "description": "出血抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_PIERCE",
+            "description": "贯通抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_STUCK",
+            "description": "命中相关加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_CONFUSE",
+            "description": "混乱抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_HOLD",
+            "description": "束缚抗性加成"
+        },
+        {
+            "name": "ACTIVESTATUS_TOLERANCE_ALL",
+            "closing": true,
+            "description": "所有状态异常抗性加成"
+        },
+        {
+            "name":"INVENTORY_MAX_WEIGHT",
+            "description": "背包最大重量加成"
+        },
+        {
+            "name":"HP_REGENRATE",
+            "description": "HP 回复速度加成"
+        },
+        {
+            "name":"MP_REGENRATE",
+            "description": "MP 回复速度加成"
+        },
+        {
+            "name":"MP_REGENRATE_PERCENT_UP",
+            "description": "MP 回复速度百分比加成"
+        },
+        {
+            "name":"MOVE_SPEED",
+            "description": "移动速度加成"
+        },
+        {
+            "name":"ATTACK_SPEED",
+            "description": "攻击速度加成"
+        },
+        {
+            "name":"CAST_SPEED",
+            "description": "施法速度加成"
+        },
+        {
+            "name":"HIT_RECOVERY",
+            "description": "击中恢复速度加成"
+        },
+        {
+            "name":"JUMP_POWER",
+            "description": "跳跃力加成"
+        },
+        {
+            "name":"CRITICAL",
+            "description": "暴击率加成"
+        },
+        {
+            "name":"SKILL_LEVEL",
+            "description": "技能等级加成"
+        },
+        {
+            "name": "usable job",
+            "closing": true,
+            "description": "可使用职业\n`[swordman]`\n`[fighter]`\n`[at fighter]`\n`[demonic swordman]`\n`[creatormage]`\n`[gunner]`\n`[at gunner]`\n`[mage]`\n`[at mage]`\n`[priest]`\n`[all]`"
+        },
+        {
+            "name": "swordman",
+            "description": "鬼剑士"
+        },
+        {
+            "name": "fighter",
+            "description": "格斗家(女)"
+        },
+        {
+            "name": "at fighter",
+            "description": "格斗家(男)"
+        },
+        {
+            "name": "demonic swordman",
+            "description": "黑暗武士"
+        },
+        {
+            "name": "creatormage",
+            "description": "缔造者"
+        },
+        {
+            "name": "gunner",
+            "description": "神枪手(男)"
+        },
+        {
+            "name": "at gunner",
+            "description": "神枪手(女)"
+        },
+        {
+            "name": "mage",
+            "description": "魔法师(女)"
+        },
+        {
+            "name": "at mage",
+            "description": "魔法师(男)"
+        },
+        {
+            "name": "priest",
+            "description": "圣职者"
+        },
+        {
+            "name": "all",
+            "description": "所有职业"
+        },
+        {
+            "name": "minimum level",
+            "description": "使用所需最低等级"
+        },
+        {
+            "name": "required skill",
+            "description": "使用所需技能索引 (无则 -1)"
+        },
+        {
+            "name": "custom animation",
+            "closing": true,
+            "description": "自定义动画(.ani)文件列表，仅用于称号"
+        },
+        {
+            "name": "usable even peace",
+            "description": "和平/待机区域也触发特殊效果 (1 开启)"
+        },
+        {
+            "name": "equipment type",
+            "description": "装备类型 + 价格表索引\n`[weapon]`\n`[hat avatar]`\n`[hair avatar]`\n`[breast avatar]`\n`[face avatar]`\n`[waist avatar]`\n`[coat avatar]`\n`[pants avatar]`\n`[shoes avatar]`\n`[weapon]`\n`[title name]`\n`[coat]`\n`[shoulder]`\n`[pants]`\n`[shoes]`\n`[waist]`\n`[amulet]`\n`[wrist]`\n`[ring]`"
+        },
+        {
+            "name": "weapon",
+            "description": "武器"
+        },
+        {
+            "name": "hat avatar",
+            "description": "帽子(时装)"
+        },
+        {
+            "name": "hair avatar",
+            "description": "发型(时装)"
+        },
+        {
+            "name": "breast avatar",
+            "description": "上衣(时装)"
+        },
+        {
+            "name": "face avatar",
+            "description": "脸部(时装)"
+        },
+        {
+            "name": "waist avatar",
+            "description": "腰带(时装)"
+        },
+        {
+            "name": "coat avatar",
+            "description": "外套(时装)"
+        },
+        {
+            "name": "pants avatar",
+            "description": "裤子(时装)"
+        },
+        {
+            "name": "shoes avatar",
+            "description": "鞋子(时装)"
+        },
+        {
+            "name": "title name",
+            "description": "称号"
+        },
+        {
+            "name": "coat",
+            "description": "外套"
+        },
+        {
+            "name": "shoulder",
+            "description": "肩部"
+        },
+        {
+            "name": "pants",
+            "description": "裤子"
+        },
+        {
+            "name": "shoes",
+            "description": "鞋子"
+        },
+        {
+            "name": "waist",
+            "description": "腰带"
+        },
+        {
+            "name": "amulet",
+            "description": "项链"
+        },
+        {
+            "name": "wrist",
+            "description": "手镯"
+        },
+        {
+            "name": "ring",
+            "description": "戒指"
+        },
+        {
+            "name": "hide equipment",
+            "description": "穿戴时需要隐藏的其他装备部位"
+        },
+        {
+            "name": "hide layer",
+            "closing": true,
+            "description": "需隐藏图层编号列表"
+        },
+        {
+            "name": "sub type",
+            "description": "子类型/子分类 (武器细分或特殊用途)"
+        },
+        {
+            "name": "durability",
+            "description": "耐久 (0=无限)"
+        },
+        {
+            "name": "price",
+            "description": "基础价格"
+        },
+        {
+            "name": "value",
+            "description": "出售回收价"
+        },
+        {
+            "name": "repair price",
+            "description": "修理费用 (默认 value -> price)"
+        },
+        {
+            "name": "need material",
+            "description": "所需材料: 物品索引 数量"
+        },
+        {
+            "name": "cash",
+            "description": "点券/现金价格"
+        },
+        {
+            "name": "medal",
+            "description": "勋章价格"
+        },
+        {
+            "name": "finish point price",
+            "description": "FP 价格"
+        },
+        {
+            "name": "cool time",
+            "description": "装备整体冷却(ms)"
+        },
+        {
+            "name": "icon",
+            "description": "主图标文件 + 帧"
+        },
+        {
+            "name": "icon mark",
+            "description": "图标外框(品级框) + 帧"
+        },
+        {
+            "name": "extra icon",
+            "description": "额外/复制态图标文件 + 帧"
+        },
+        {
+            "name": "field image",
+            "description": "掉落在地面时的图像文件 + 帧"
+        },
+        {
+            "name": "custom wav",
+            "closing": true,
+            "description": "自定义音效标识列表"
+        },
+        {
+            "name": "move wav",
+            "description": "移动/拾取/装备时音效标识"
+        },
+        {
+            "name": "use wav",
+            "description": "使用/激活时音效标识"
+        },
+        {
+            "name": "expand ani",
+            "closing": true,
+            "description": "扩展/替换部位动画块，含变体、路径与自定义 wav"
+        },
+        {
+            "name": "expand path",
+            "description": "expand ani 内的资源基路径"
+        },
+        {
+            "name": "animation job",
+            "description": "动画所属职业"
+        },
+        {
+            "name": "variation",
+            "description": "动画变体索引"
+        },
+        {
+            "name": "layer variation",
+            "description": "图层索引 + 层目录名"
+        },
+        {
+            "name": "equipment ani script",
+            "description": "动画列表脚本 (.lay)"
+        },
+        {
+            "name": "name",
+            "description": "主名称"
+        },
+        {
+            "name": "name2",
+            "description": "副/英文名称"
+        },
+        {
+            "name": "basic explain",
+            "description": "简要描述(反引号多行)"
+        },
+        {
+            "name": "detail explain",
+            "description": "详细描述(反引号多行)"
+        },
+        {
+            "name": "flavor text",
+            "description": "趣味文本"
+        },
+        {
+            "name": "grade",
+            "description": "品级"
+        },
+        {
+            "name": "spectrum",
+            "description": "残影效果\n255 0 0 255 1000 // R G B A 时长"
+        },
+        {
+            "name": "attach type",
+            "description": "绑定/交易类型"
+        },
+        {
+            "name": "creation rate",
+            "description": "生成/产出比率"
+        },
+        {
+            "name": "rarity",
+            "description": "稀有度(0~5)"
+        },
+        {
+            "name": "anti evil",
+            "description": "抗魔值"
+        },
+        {
+            "name": "weight",
+            "description": "重量(g)"
+        },
+        {
+            "name": "HP MAX",
+            "description": "最大 HP 增减"
+        },
+        {
+            "name": "MP MAX",
+            "description": "最大 MP 增减"
+        },
+        {
+            "name": "physical attack",
+            "description": "力量/物攻(示例注释中说明)"
+        },
+        {
+            "name": "physical defense",
+            "description": "体力/物防"
+        },
+        {
+            "name": "magical attack",
+            "description": "智力/魔攻"
+        },
+        {
+            "name": "magical defense",
+            "description": "精神/魔防"
+        },
+        {
+            "name": "equipment physical attack",
+            "description": "装备物理攻击(冒险/决斗)"
+        },
+        {
+            "name": "equipment physical defense",
+            "description": "装备物理防御(冒险/决斗)"
+        },
+        {
+            "name": "equipment magical attack",
+            "description": "装备魔法攻击(冒险/决斗)"
+        },
+        {
+            "name": "equipment magical defense",
+            "description": "装备魔法防御(冒险/决斗)"
+        },
+        {
+            "name": "physical absolute damage",
+            "description": "物理绝对伤害"
+        },
+        {
+            "name": "physical damage reduce",
+            "description": "物理伤害修正/减免"
+        },
+        {
+            "name": "physical absolute defense",
+            "description": "物理绝对防御(百分比)"
+        },
+        {
+            "name": "magical absolute damage",
+            "description": "魔法绝对伤害"
+        },
+        {
+            "name": "magical damage reduce",
+            "description": "魔法伤害修正/减免"
+        },
+        {
+            "name": "magical absolute defense",
+            "description": "魔法绝对防御(百分比)"
+        },
+        {
+            "name": "fire resistance",
+            "description": "火属性抗性"
+        },
+        {
+            "name": "water resistance",
+            "description": "水属性抗性"
+        },
+        {
+            "name": "dark resistance",
+            "description": "暗属性抗性"
+        },
+        {
+            "name": "light resistance",
+            "description": "光属性抗性"
+        },
+        {
+            "name": "all elemental resistance",
+            "description": "全元素抗性"
+        },
+        {
+            "name": "fire attack",
+            "description": "火属性强化"
+        },
+        {
+            "name": "water attack",
+            "description": "水属性强化"
+        },
+        {
+            "name": "dark attack",
+            "description": "暗属性强化"
+        },
+        {
+            "name": "light attack",
+            "description": "光属性强化"
+        },
+        {
+            "name": "slow resistance",
+            "description": "减速抗性"
+        },
+        {
+            "name": "freeze resistance",
+            "description": "冰冻抗性"
+        },
+        {
+            "name": "poison resistance",
+            "description": "中毒抗性"
+        },
+        {
+            "name": "stun resistance",
+            "description": "眩晕抗性"
+        },
+        {
+            "name": "curse resistance",
+            "description": "诅咒抗性"
+        },
+        {
+            "name": "blind resistance",
+            "description": "失明抗性"
+        },
+        {
+            "name": "lightning resistance",
+            "description": "感电抗性"
+        },
+        {
+            "name": "stone resistance",
+            "description": "石化抗性"
+        },
+        {
+            "name": "sleep resistance",
+            "description": "睡眠抗性"
+        },
+        {
+            "name": "bleeding resistance",
+            "description": "出血抗性"
+        },
+        {
+            "name": "confuse resistance",
+            "description": "混乱抗性"
+        },
+        {
+            "name": "hold resistance",
+            "description": "束缚抗性"
+        },
+        {
+            "name": "burn resistance",
+            "description": "灼烧抗性"
+        },
+        {
+            "name": "weapon break resistance",
+            "description": "武器破坏抗性"
+        },
+        {
+            "name": "armor break resistance",
+            "description": "防具破坏抗性"
+        },
+        {
+            "name": "deelement resistance",
+            "description": "元素剥离抗性(未使用)"
+        },
+        {
+            "name": "deadlystrike resistance",
+            "description": "致命打击抗性(未使用)"
+        },
+        {
+            "name": "all activestatus resistance",
+            "description": "全状态异常抗性"
+        },
+        {
+            "name": "piercing resistance",
+            "description": "贯通/穿刺抗性"
+        },
+        {
+            "name": "stuck resistance",
+            "description": "命中/回避相关(示例说明为回避率)"
+        },
+        {
+            "name": "active status control info",
+            "description": "状态控制收益配置: 名称 概率 提升 持续 额外参数\n`bleeding` 10 20 30 n //流血几率增加（10%）等级增加（20）持续时间增加（30%）其他信息（对于流血的情况，伤害增加率 n%）\n"
+        },
+        {
+            "name": "inventory limit",
+            "description": "背包容量增加 (重量)"
+        },
+        {
+            "name": "HP regen speed",
+            "description": "HP 回复速度原始值"
+        },
+        {
+            "name": "MP regen speed",
+            "description": "MP 回复速度原始值"
+        },
+        {
+            "name": "MP regen speed rate",
+            "description": "MP 回复速度百分比加成"
+        },
+        {
+            "name": "move speed",
+            "description": "移动速度 (0.1% 单位)"
+        },
+        {
+            "name": "x move dash speed",
+            "description": "横向冲刺速度倍率"
+        },
+        {
+            "name": "y move dash speed",
+            "description": "纵向冲刺速度倍率"
+        },
+        {
+            "name": "attack speed",
+            "description": "攻击速度 (0.1% 单位)"
+        },
+        {
+            "name": "cast speed",
+            "description": "施法速度 (0.1% 单位)"
+        },
+        {
+            "name": "hit recovery",
+            "description": "硬直恢复/Hit Recovery"
+        },
+        {
+            "name": "rigidity",
+            "description": "刚性/硬直度"
+        },
+        {
+            "name": "jump power",
+            "description": "跳跃力"
+        },
+        {
+            "name": "room list move speed rate",
+            "description": "城镇/房间列表移动速度"
+        },
+        {
+            "name": "elemental property",
+            "description": "赋予元素属性 \n`[no element]`\n`[fire element]`\n`[water element]`\n`[dark element]`\n`[light element]`"
+        },
+        {
+            "name": "item aura",
+            "description": "装备光环: 元素方式 + 数值 + 范围"
+        },
+        {
+            "name": "active status",
+            "description": "旧式状态异常设置(已弃用)"
+        },
+        {
+            "name": "push aside",
+            "description": "击退强度"
+        },
+        {
+            "name": "lift up",
+            "description": "浮空强度"
+        },
+        {
+            "name": "physical critical hit",
+            "description": "物理暴击率增量"
+        },
+        {
+            "name": "magical critical hit",
+            "description": "魔法暴击率增量"
+        },
+        {
+            "name": "stuck",
+            "description": "命中修正(负数表示增加)"
+        },
+        {
+            "name": "ignore defense",
+            "description": "忽略防御(未使用时可忽略)"
+        },
+        {
+            "name": "human damage rate",
+            "description": "对人型伤害比率(%)."
+        },
+        {
+            "name": "fort damage rate",
+            "description": "对要塞/破坏物伤害比率(%)."
+        },
+        {
+            "name": "monster damage rate",
+            "description": "对怪物伤害比率(%)."
+        },
+        {
+            "name": "HP drain",
+            "description": "HP 吸收"
+        },
+        {
+            "name": "MP drain",
+            "description": "MP 吸收"
+        },
+        {
+            "name": "skill data up",
+            "closing": true,
+            "description": "技能数据调整块\n`[fighter]` 12 `[dungeon]` `[static]` 2 `+` 20"
+        },
+        {
+            "name": "skill levelup",
+            "closing": true,
+            "description": "技能等级提升块"
+        },
+        {
+            "name": "if",
+            "closing": true,
+            "description": "条件块包含 cooltime/attack success 等"
+        },
+        {
+            "name": "cooltime",
+            "description": "条件触发冷却时间 (ms)"
+        },
+        {
+            "name": "attack success",
+            "description": "攻击成功触发次数/条件"
+        },
+        {
+            "name": "then",
+            "closing": true,
+            "description": "条件满足执行效果块"
+        },
+        {
+            "name": "target",
+            "description": "效果目标 (myself 等)"
+        },
+        {
+            "name": "duration",
+            "description": "效果持续时间(ms)"
+        },
+        {
+            "name": "probability",
+            "description": "触发概率(1 = 100%)"
+        },
+        {
+            "name": "stat",
+            "description": "状态修改: 名称 `+|%` 数值"
+        },
+        {
+            "name": "character name y revision",
+            "description": "角色名称 Y 坐标修正"
+        },
+        {
+            "name": "effect",
+            "closing": true,
+            "description": "效果块：可多次；内部: attach target/type/pos/index/option/module/file name"
+        },
+        {
+            "name": "attach target",
+            "description": "effect 内附着目标 (delegator/target)"
+        },
+        {
+            "name": "type",
+            "description": "effect 类型 (animation/particle/range)"
+        },
+        {
+            "name": "attach pos",
+            "description": "附着位置 (bottom/middle/top)"
+        },
+        {
+            "name": "z revision",
+            "description": "Z 高度修正"
+        },
+        {
+            "name": "index",
+            "description": "动画附着层索引"
+        },
+        {
+            "name": "option",
+            "closing": true,
+            "description": "effect 可选项列表块"
+        },
+        {
+            "name": "module",
+            "description": "限定出现模块(room list等)"
+        },
+        {
+            "name": "file name",
+            "description": "效果资源路径 (.ani)"
+        },
+        {
+            "name": "item category",
+            "closing": true,
+            "description": "物品分类标记块: monster card / cannot bind / boss drop"
+        },
+        {
+            "name": "limit upgradable level",
+            "closing": true,
+            "description": "强化/增幅/精炼 等等级限制定义块"
+        },
+        {
+            "name": "level linear ability",
+            "closing": true,
+            "description": "等级线性成长能力块"
+        },
+        {
+            "name": "level section ability",
+            "closing": true,
+            "description": "等级分段成长能力块"
+        },
+        {
+            "name": "level section ani",
+            "closing": true,
+            "description": "等级/职业条件的动画覆盖块"
+        },
+        {
+            "name": "set name",
+            "description": "套装名称"
+        },
+        {
+            "name": "set item",
+            "closing": true,
+            "description": "套装物品索引列表"
+        },
+        {
+            "name": "set item master",
+            "description": "主套装物品索引(被其他 set item 引用时)"
+        },
+        {
+            "name": "set ability",
+            "closing": true,
+            "description": "全套装备后附加能力块"
+        },
+        {
+            "name": "fullset basic explain",
+            "description": "全套基本描述"
+        },
+        {
+            "name": "fullset detail explain",
+            "description": "全套详细描述"
+        },
+        {
+            "name": "piece set ability",
+            "closing": true,
+            "description": "部分套装效果定义块"
+        },
+        {
+            "name": "parameter basic explain",
+            "description": "部分套装基本描述"
+        },
+        {
+            "name": "parameter detail explain",
+            "description": "部分套装详细描述"
+        },
+        {
+            "name": "part set index",
+            "description": "部位套装索引"
+        },
+        {
+            "name": "hardcoding cooltime",
+            "description": "硬编码额外冷却"
+        },
+        {
+            "name": "int data",
+            "closing": true,
+            "description": "整型数据列表"
+        },
+        {
+            "name": "string data",
+            "closing": true,
+            "description": "字符串数据列表"
+        },
+        {
+            "name": "attack info",
+            "description": "附加攻击信息(.atk)"
+        },
+        {
+            "name": "change type ultimateSkillCurScene",
+            "description": "觉醒技能 CutScene 类型设置"
+        },
+        {
+            "name": "item group name",
+            "description": "物品所属分组名称/显示分组若 EQU 中引用分组掉落或套装整理，用此指示"
+        },
+        {
+            "name": "Force Result Item Rule",
+            "description": "强制结果物品规则块：内部定义特定条件下产出/合成/升级的结果物品条目"
+        },
+        {
+            "name": "separate attack",
+            "description": "独立攻击(成长用攻击基值)在 [level linear ability]/[level section ability] 中出现；表示冒险/决斗分途或拆分的基础攻击"
+        },
+        {
+            "name": "physical attack",
+            "description": "物理攻击(历史拼写错误/兼容标签)等价于 physical attack；为兼容旧脚本保留"
+        },
+        {
+            "name": "subtype",
+            "description": "子类型标签的无空格形式；在 [level section ani] 内使用功能同 'sub type'"
+        },
+        {"name": "dungeon check", "closing": true, "description": "地下城检查?"},
+        {"name": "change status", "description": "改变状态"},
+        {"name": "stat by condition", "description": "按条件调整状态"},
+        {"name": "multiple then", "closing": true, "description": "多个 then 块"},
+        {"name": "then probability", "description": "then 块内的概率"},
+        {"name": "passive object", "closing": true, "description": "被动对象块"},
+        {"name": "impossible contents", "closing": true, "description": "不能进行的操作 \n示例 \n `disjoint`\n`gift`"},
+        {"name": "target active status", "description": "目标状态异常"},
+        {"name": "add absolute damage", "description": "增加绝对伤害"},
+        {"name": "disjoint", "description": "不能进行的操作-附魔"},
+        {"name": "gift", "description": "不能进行的操作-送礼"},
+        {"name": "upgrade", "description": "不能进行的操作-强化"},
+        {"name": "amplify upgrade", "description": "不能进行的操作-强化"},
+        {"name": "separate upgrade", "description": "不能进行的操作-锻造"},
+        {"name": "charac cargo", "description": "不能进行的操作-角色仓库"},
+        {"name": "possible kiri protect", "description": "可以使用凯莉的保护券"},
+        {"name": "reduce probability to human armor at pvp module", "description": "在 PVP 模块中减少对人型防具的概率"},
+        {"name": "routing priority", "closing": true, "description": "路由优先级"},
+        {"name": "pvp", "closing": true, "description": "PVP内的属性"},
+        {"name": "not amplify", "description": ""},
+        {"name": "attack condition", "description": "攻击条件"},
+        {"name": "event attack success", "description": "攻击成功时"},
+        {"name": "increase damage", "description": "增加伤害 \n示例 \n `%`  14 //增加14%伤害"},
+        {"name": "skill", "closing": true, "description": "使用技能时(if块内) \n示例 \n `demonic swordman`  72 //黑暗武士使用id为72的技能"}
+    ]
+}

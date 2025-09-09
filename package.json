@@ -62,6 +62,12 @@
         "extensions": [".str"],
         "configuration": "./src/scriptLang/str/language-configuration.json"
       }
+      ,{
+        "id": "pvf-equ",
+        "aliases": ["EQU", "pvf-equ"],
+        "extensions": [".equ"],
+        "configuration": "./src/scriptLang/equ/language-configuration.json"
+      }
     ],
     "grammars": [
       {
@@ -88,6 +94,11 @@
         "language": "pvf-str",
         "scopeName": "source.pvf-str",
         "path": "./syntaxes/pvf-str.tmLanguage.json"
+      }
+      ,{
+        "language": "pvf-equ",
+        "scopeName": "source.pvf-equ",
+        "path": "./syntaxes/pvf-equ.tmLanguage.json"
       }
     ],
     "configuration": {

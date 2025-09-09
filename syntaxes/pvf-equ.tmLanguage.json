@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF EQU",
+  "scopeName": "source.pvf-equ",
+  "fileTypes": ["equ"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#blockComment" },
+    { "include": "#tag" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": { "patterns": [ { "name": "comment.line.double-slash.pvf-equ", "match": "//.*$" } ] },
+    "blockComment": { "patterns": [ { "name": "comment.block.pvf-equ", "begin": "/\\*", "end": "\\*/" } ] },
+    "string": { "patterns": [ { "name": "string.quoted.backtick.pvf-equ", "begin": "`", "end": "`" } ] },
+    "number": { "patterns": [ { "name": "constant.numeric.pvf-equ", "match": "[-+]?\\b[0-9]+(?:\\.[0-9]+)?\\b" } ] },
+    "operator": { "patterns": [ { "name": "keyword.operator.pvf-equ", "match": "[+*%]" } ] },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.pvf-equ",
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.pvf-equ" } },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.tag.end.pvf-equ" } },
+          "patterns": [
+            { "name": "entity.name.tag.pvf-equ", "match": "[A-Za-z_][A-Za-z0-9 _-]*" },
+            { "include": "#string" },
+            { "include": "#number" },
+            { "include": "#operator" }
+          ]
+        }
+      ]
+    }
+  },
+  "uuid": "pvf-equ-1111-4000-8000-000000000000"
+}
