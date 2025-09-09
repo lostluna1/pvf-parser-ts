@@ -11,7 +11,7 @@
         },
         {
             "name": "PHYSICAL_ATTACK",
-            "description": "物理伤害加成"
+            "description": "力量加成"
         },
         {
             "name": "PHYSICAL_DEFENSE",
@@ -19,7 +19,7 @@
         },
         {
             "name": "MAGICAL_ATTACK",
-            "description": "魔法伤害加成"
+            "description": "智力加成"
         },
         {
             "name": "MAGICAL_DEFENSE",
@@ -27,19 +27,19 @@
         },
         {
             "name": "EQUIPMENT_PHYSICAL_ATTACK",
-            "description": "装备物理攻击加成"
+            "description": "物理攻击加成"
         },
         {
             "name": "EQUIPMENT_PHYSICAL_DEFENSE",
-            "description": "装备物理防御加成"
+            "description": "物理防御加成"
         },
         {
             "name": "EQUIPMENT_MAGICAL_ATTACK",
-            "description": "装备魔法攻击加成"
+            "description": "魔法攻击加成"
         },
         {
             "name": "EQUIPMENT_MAGICAL_DEFENSE",
-            "description": "装备魔法防御加成"
+            "description": "魔法防御加成"
         },
         {
             "name": "ELEMENT_TOLERANCE_FIRE",
@@ -505,7 +505,7 @@
         },
         {
             "name": "equipment magical defense",
-            "description": "装备魔法防御(冒险/决斗)"
+            "description": "魔法防御力"
         },
         {
             "name": "physical absolute damage",
@@ -693,7 +693,7 @@
         },
         {
             "name": "rigidity",
-            "description": "刚性/硬直度"
+            "description": "僵直"
         },
         {
             "name": "jump power",

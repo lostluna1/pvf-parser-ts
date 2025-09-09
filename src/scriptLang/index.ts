@@ -11,7 +11,7 @@ import { registerEquLanguage } from './equ/registerEqu';
 import { registerEquFormatter } from './equ/formatter';
 
 // 未来可扩展：扫描 scriptTags 下的定义动态生成补全与 hover。
-export function registerScriptLanguages(context: vscode.ExtensionContext) {
+export function registerScriptLanguages(context: vscode.ExtensionContext, model?: any) {
     registerActLanguage(context);
     registerActFormatter(context);
     registerAniLanguage(context);
@@ -21,6 +21,6 @@ export function registerScriptLanguages(context: vscode.ExtensionContext) {
     registerSklFormatter(context);
     registerLstLanguage(context);
     registerStrLanguage(context);
-    registerEquLanguage(context);
+    registerEquLanguage(context, model);
     registerEquFormatter(context);
 }

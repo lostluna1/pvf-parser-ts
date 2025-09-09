@@ -158,7 +158,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // 注册脚本语言特性 (.act 等)
-    registerScriptLanguages(context);
+    registerScriptLanguages(context, model);
 
     // 启动时可选择自动关闭被 VS Code session 恢复的 pvf: 虚拟编辑器标签
     try {
