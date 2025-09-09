@@ -239,7 +239,14 @@ function parseEquContent(text: string): EquInfo {
     const lines = text.split(/\r?\n/);
     const info: EquInfo = {};
     let currentTag: string | null = null;
-    let inSetAbility = false; // 标记当前是否在 [set ability] 区块内部
+    // ===== 块解析扩展：忽略所有块(存在闭合 [/tag])内部的属性标签，除白名单 =====
+    const closingTags = new Set<string>();
+    for (const rawLine of lines) {
+        const mm = rawLine.trim().match(/^\[\/(.+?)\]$/);
+        if (mm) closingTags.add(mm[1].toLowerCase());
+    }
+    const blockStack: string[] = [];
+    const whitelistInside = new Set<string>(['usable job', 'skill levelup']); // 这些块内仍解析其自身内容
     const collect: Record<string, string[]> = {};
     const push = (tag: string, value: string) => { (collect[tag] ||= []).push(value); };
     for (let raw of lines) {
@@ -248,13 +255,35 @@ function parseEquContent(text: string): EquInfo {
         const m = raw.match(/^\[(.+?)\]$/);
         if (m) {
             const tagName = m[1].toLowerCase();
-            if (tagName === 'set ability') { inSetAbility = true; currentTag = null; continue; }
-            if (tagName === '/set ability') { inSetAbility = false; currentTag = null; continue; }
-            if (inSetAbility) { currentTag = null; continue; } // 忽略区块内的标签
+            // 关闭块
+            if (tagName.startsWith('/')) {
+                const closeName = tagName.slice(1);
+                // 弹出对应块
+                if (blockStack.length && blockStack[blockStack.length - 1] === closeName) {
+                    blockStack.pop();
+                } else {
+                    // 若栈不匹配，尝试向上寻找
+                    const idx = blockStack.lastIndexOf(closeName);
+                    if (idx !== -1) blockStack.splice(idx);
+                }
+                currentTag = null;
+                continue;
+            }
+            // 进入块（存在对应闭合标签且非白名单 -> 仅标记，不解析内部属性）
+            if (closingTags.has(tagName) && !whitelistInside.has(tagName)) {
+                blockStack.push(tagName);
+                currentTag = null;
+                continue;
+            }
+            // 白名单块：自身作为 currentTag 采集其直接文本行
             currentTag = tagName;
             continue;
         }
-        if (!inSetAbility && currentTag) push(currentTag, raw);
+        if (blockStack.length > 0) {
+            // 在非白名单块内部不采集任何标签值
+            if (!currentTag || !whitelistInside.has(currentTag)) continue;
+        }
+        if (currentTag) push(currentTag, raw);
     }
     const takeStr = (tag: string) => {
         const key = tag.toLowerCase();
