@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
-    "vscode": "^1.103.0"
+    "vscode": "^1.100.0"
   },
   "categories": [
     "Other"
@@ -52,20 +52,35 @@
       },
       {
         "id": "pvf-lst",
-        "aliases": ["LST", "pvf-lst"],
-        "extensions": [".lst"],
+        "aliases": [
+          "LST",
+          "pvf-lst"
+        ],
+        "extensions": [
+          ".lst"
+        ],
         "configuration": "./src/scriptLang/lst/language-configuration.json"
       },
       {
         "id": "pvf-str",
-        "aliases": ["STR", "pvf-str"],
-        "extensions": [".str"],
+        "aliases": [
+          "STR",
+          "pvf-str"
+        ],
+        "extensions": [
+          ".str"
+        ],
         "configuration": "./src/scriptLang/str/language-configuration.json"
-      }
-      ,{
+      },
+      {
         "id": "pvf-equ",
-        "aliases": ["EQU", "pvf-equ"],
-        "extensions": [".equ"],
+        "aliases": [
+          "EQU",
+          "pvf-equ"
+        ],
+        "extensions": [
+          ".equ"
+        ],
         "configuration": "./src/scriptLang/equ/language-configuration.json"
       }
     ],
@@ -94,8 +109,8 @@
         "language": "pvf-str",
         "scopeName": "source.pvf-str",
         "path": "./syntaxes/pvf-str.tmLanguage.json"
-      }
-      ,{
+      },
+      {
         "language": "pvf-equ",
         "scopeName": "source.pvf-equ",
         "path": "./syntaxes/pvf-equ.tmLanguage.json"
@@ -313,8 +328,8 @@
           "command": "pvf.previewAni",
           "when": "resourceExtname == .ani",
           "group": "navigation@9"
-        }
-        ,{
+        },
+        {
           "command": "pvf.showReactDemo",
           "when": "editorTextFocus",
           "group": "navigation@50"
@@ -416,25 +431,25 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-  "postcompile": "node scripts/copy-script-tags.cjs && node scripts/copy-webview.cjs",
-  "build:webview": "node scripts/build-webview.mjs",
-  "build:all": "npm run compile && npm run postcompile && npm run build:webview",
-  "vscode:prepublish": "npm run build:all -- --prod",
+    "postcompile": "node scripts/copy-script-tags.cjs && node scripts/copy-webview.cjs",
+    "build:webview": "node scripts/build-webview.mjs",
+    "build:all": "npm run compile && npm run postcompile && npm run build:webview",
+    "vscode:prepublish": "npm run build:all -- --prod",
     "check:icons": "node ./scripts/check-icons.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@types/vscode": "^1.103.0",
+    "@types/vscode": "^1.100.0",
     "typescript": "^5.9.2",
     "esbuild": "^0.23.0"
   },
   "dependencies": {
-    "@fluentui/react-components": "^9.52.2",
+    "@fluentui/react-components": "^9.70.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-  "@fluentui/react-motion-components-preview": "^0.4.0",
+    "@fluentui/react-motion-components-preview": "^0.10.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "iconv-lite": "^0.6.3",
     "sqlite3": "^5.1.7"

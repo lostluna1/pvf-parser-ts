@@ -52,6 +52,32 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
     timeline = mainResult.timeline;
     albumMap = mainResult.albumMap;
 
+    // === 预扫描 SUPERARMOR 帧索引（基于源文本解析 [DAMAGE TYPE] 标签）===
+    let superArmorIdx: Set<number> | null = null;
+    try {
+      superArmorIdx = new Set<number>();
+      const lines = text.split(/\r?\n/);
+      let currentFrame = -1; // 与 [FRAME000] 数字保持一致 => 000 对应 index 0
+      let expectingDamageTypeValue = false;
+      for (let ln of lines) {
+        const f = /^\s*\[FRAME(\d{3})\]/i.exec(ln);
+        if (f) { currentFrame = parseInt(f[1], 10); expectingDamageTypeValue = false; continue; }
+        if (/^\s*\[DAMAGE\s+TYPE\]/i.test(ln)) { if (currentFrame >= 0) expectingDamageTypeValue = true; continue; }
+        if (expectingDamageTypeValue) {
+          const m = /`([^`]+)`/.exec(ln);
+          if (m) {
+            const val = m[1].trim().toUpperCase();
+            if (val === 'SUPERARMOR') superArmorIdx.add(currentFrame);
+            expectingDamageTypeValue = false; // 只读取第一行值
+          } else if (ln.trim() === '') {
+            // 允许空行继续
+          } else {
+            expectingDamageTypeValue = false; // 非匹配格式终止
+          }
+        }
+      }
+    } catch { superArmorIdx = null; }
+
     // === 处理同名 .ani.als 附加图层 ===
   let lastAlsMeta: { uses: { id: string; path: string }[]; adds: { id: string; relLayer: number; order: number; kind?: string }[] } | null = null;
   try {
@@ -96,7 +122,7 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
         const alsPath = doc.fileName + '.als';
         try { await fs.access(alsPath); alsText = await fs.readFile(alsPath, 'utf8'); out.appendLine(`[ALS] 发现并加载 ${alsPath}`); } catch { out.appendLine('[ALS] 未找到同名 .ani.als'); }
       }
-      if (alsText) {
+  if (alsText) {
         const parsedAls = parseAlsText(alsText, out);
         lastAlsMeta = {
           uses: Array.from(parsedAls.uses.values()).map(u => ({ id: u.id, path: u.path })),
@@ -113,6 +139,13 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
         }
       }
     } catch (e) { out.appendLine(`[ALS] 处理附加层时出错: ${String(e)}`); }
+
+  // === 在最终 timeline 上应用 SUPERARMOR 标记（放在 ALS 合成之后，避免被替换）===
+  try {
+    if (timeline && Array.isArray(timeline) && superArmorIdx && superArmorIdx.size) {
+      for (const i of superArmorIdx) { if (i >= 0 && i < timeline.length) { (timeline[i] as any).superArmor = true; } }
+    }
+  } catch {}
 
   if (!timeline || timeline.length === 0) { vscode.window.showWarningMessage('未能生成任何帧'); return; }
 

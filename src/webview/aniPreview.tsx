@@ -2,17 +2,34 @@ import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
     FluentProvider,
-    webDarkTheme,
-    webLightTheme,
     Button,
     Slider,
     Switch,
+    MessageBar,
     Select,
     makeStyles,
     shorthands,
-    tokens
+    tokens,
+    MessageBarBody,
+    MessageBarTitle
 } from '@fluentui/react-components';
 import { Collapse } from '@fluentui/react-motion-components-preview';
+import { getAppTheme, resolveModeFromBg } from './theme';
+
+// === 统一管理（除坐标系/攻击/受击框外）UI 颜色 ===
+// 说明：按你的要求，坐标系/攻击/受击框原色 (#ff4d4f/#52c41a/#1677ff/#fadb14/#13c2c2) 不改动；
+// 其他原先散落的半透明与背景颜色集中在此，便于后期替换或接入主题 tokens。
+// 这里尽量使用 Fluent tokens 代表语义；某些需要透明/渐变的仍保留自定义，同时集中到一个对象。
+const UI_COLORS = {
+    panelGradient: 'linear-gradient(180deg, rgba(30,30,30,0.92), rgba(30,30,30,0.88) 60%, rgba(30,30,30,0.75))',
+    sectionBgToken: tokens.colorNeutralBackground1, // 原 rgba(255,255,255,0.02)
+    sectionBorder: tokens.colorNeutralStroke1,
+    valueBadgeBgToken: tokens.colorNeutralBackground3, // 原 rgba(255,255,255,0.07)
+    overlayBarBg: 'rgba(0,0,0,0.35)',
+    miniBarGradient: 'linear-gradient(180deg, rgba(0,0,0,0.78), rgba(0,0,0,0))',
+    layerActiveBg: 'rgba(0,120,215,0.35)',
+    layerInactiveBg: 'rgba(255,255,255,0.04)',
+};
 
 // 简化的 TimelineFrame / Layer 类型（与 webviewHtml.ts 中使用的关键字段一致）
 interface LayerFrame {
@@ -21,6 +38,8 @@ interface LayerFrame {
     id?: string;
     dx: number; dy: number; w: number; h: number; ox: number; oy: number;
     rot?: number; sx?: number; sy?: number; rgba: string; tint?: number[]; gfx?: string;
+    // 缓存轮廓路径，避免重复计算
+    __outlinePath?: Path2D;
 }
 interface Box3D { x: number; y: number; z: number; w: number; h: number; d: number; }
 interface TimelineFrame { layers?: LayerFrame[]; delay?: number; atk?: Box3D[]; dmg?: Box3D[]; }
@@ -56,10 +75,10 @@ const useStyles = makeStyles({
         display: 'flex',
         flexDirection: 'column',
         rowGap: '10px',
-        padding: '12px 16px 18px 16px',
-        background: 'linear-gradient(180deg, rgba(30,30,30,0.92), rgba(30,30,30,0.88) 60%, rgba(30,30,30,0.75))',
+    padding: '12px 16px 18px 16px',
+    background: UI_COLORS.panelGradient,
         backdropFilter: 'blur(6px)',
-        borderBottom: '1px solid var(--vscode-panel-border)',
+    borderBottom: `1px solid ${UI_COLORS.sectionBorder}`,
         boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
     },
     panelGroups: {
@@ -72,8 +91,8 @@ const useStyles = makeStyles({
         display: 'flex',
         flexDirection: 'column',
         rowGap: '6px',
-        background: 'rgba(255,255,255,0.02)',
-        border: '1px solid var(--vscode-panel-border)',
+    background: UI_COLORS.sectionBgToken,
+    border: `1px solid ${UI_COLORS.sectionBorder}`,
         borderRadius: '4px',
         padding: '6px 8px'
     },
@@ -97,7 +116,7 @@ const useStyles = makeStyles({
         fontSize: '11px',
         padding: '2px 6px',
         borderRadius: '4px',
-        background: 'rgba(255,255,255,0.07)'
+    background: UI_COLORS.valueBadgeBgToken
     },
     canvasWrap: { position: 'relative', flex: 1, ...shorthands.overflow('hidden'), display: 'flex', marginTop: 0 },
     canvas: { width: '100%', height: '100%', display: 'block', outline: 'none', flex: 1 },
@@ -109,7 +128,7 @@ const useStyles = makeStyles({
         columnGap: '8px',
         fontSize: '11px',
         padding: '4px 6px',
-        background: 'rgba(0,0,0,0.35)',
+    background: UI_COLORS.overlayBarBg,
         borderRadius: '4px',
         backdropFilter: 'blur(3px)'
     },
@@ -129,7 +148,7 @@ const useStyles = makeStyles({
         alignItems: 'center',
         gap: '8px',
         padding: '4px 10px',
-        background: 'linear-gradient(180deg, rgba(0,0,0,0.78), rgba(0,0,0,0))',
+    background: UI_COLORS.miniBarGradient,
         fontSize: '12px',
         zIndex: 5,
         pointerEvents: 'none'
@@ -137,13 +156,6 @@ const useStyles = makeStyles({
     miniBarContent: { display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }
 });
 
-// Error Boundary 用于捕获 Combobox 点击导致的潜在渲染崩溃
-class ErrorBoundary extends React.Component<{ onError?: (err: any) => void; children: React.ReactNode }, { hasError: boolean; errMsg: string }> {
-    constructor(p: any) { super(p); this.state = { hasError: false, errMsg: '' }; }
-    static getDerivedStateFromError(e: any) { return { hasError: true, errMsg: String(e?.message || e) }; }
-    componentDidCatch(e: any, info: any) { this.props.onError?.({ e, info }); }
-    render() { if (this.state.hasError) { return <div style={{ padding: 8, color: '#f33', fontSize: 12 }}>UI 组件错误: {this.state.errMsg}</div>; } return this.props.children as any; }
-}
 
 const useAniLogic = () => {
     const init = React.useMemo(() => window.__ANI_INIT!, []);
@@ -192,6 +204,78 @@ const useAniLogic = () => {
 
     const offscreenRef = React.useRef<HTMLCanvasElement | null>(null);
 
+    // 基于 alpha 通道生成轮廓（外轮廓 + 内洞边界）。简单边缘扫描：对每个非透明像素，如果相邻方向为空则添加一条边线段。
+    const buildOutlinePath = React.useCallback((imgData: ImageData, ox: number, oy: number, threshold = 20): Path2D => {
+        const { data, width: W, height: H } = imgData;
+        const alphaAt = (x: number, y: number) => {
+            if (x < 0 || y < 0 || x >= W || y >= H) return 0;
+            return data[(y * W + x) * 4 + 3];
+        };
+        const path = new Path2D();
+        // 扫描生成四类边：上、下、左、右；每类尝试合并连续段减少 moveTo/lineTo 数量
+        // 上边
+        for (let y = 0; y < H; y++) {
+            let run = false; let sx = 0;
+            for (let x = 0; x <= W; x++) {
+                const inside = x < W && alphaAt(x, y) >= threshold;
+                const neighbor = x < W && alphaAt(x, y - 1) >= threshold;
+                const edge = inside && !neighbor;
+                if (edge && !run) { run = true; sx = x; }
+                if ((!edge || x === W) && run) { // 结束一段
+                    path.moveTo(ox + sx, oy + y);
+                    path.lineTo(ox + x, oy + y);
+                    run = false;
+                }
+            }
+        }
+        // 下边
+        for (let y = 0; y < H; y++) {
+            let run = false; let sx = 0;
+            for (let x = 0; x <= W; x++) {
+                const inside = x < W && alphaAt(x, y) >= threshold;
+                const neighbor = x < W && alphaAt(x, y + 1) >= threshold;
+                const edge = inside && !neighbor;
+                if (edge && !run) { run = true; sx = x; }
+                if ((!edge || x === W) && run) {
+                    path.moveTo(ox + sx, oy + y + 1);
+                    path.lineTo(ox + x, oy + y + 1);
+                    run = false;
+                }
+            }
+        }
+        // 左边
+        for (let x = 0; x < W; x++) {
+            let run = false; let sy = 0;
+            for (let y = 0; y <= H; y++) {
+                const inside = y < H && alphaAt(x, y) >= threshold;
+                const neighbor = y < H && alphaAt(x - 1, y) >= threshold;
+                const edge = inside && !neighbor;
+                if (edge && !run) { run = true; sy = y; }
+                if ((!edge || y === H) && run) {
+                    path.moveTo(ox + x, oy + sy);
+                    path.lineTo(ox + x, oy + y);
+                    run = false;
+                }
+            }
+        }
+        // 右边
+        for (let x = 0; x < W; x++) {
+            let run = false; let sy = 0;
+            for (let y = 0; y <= H; y++) {
+                const inside = y < H && alphaAt(x, y) >= threshold;
+                const neighbor = y < H && alphaAt(x + 1, y) >= threshold;
+                const edge = inside && !neighbor;
+                if (edge && !run) { run = true; sy = y; }
+                if ((!edge || y === H) && run) {
+                    path.moveTo(ox + x + 1, oy + sy);
+                    path.lineTo(ox + x + 1, oy + y);
+                    run = false;
+                }
+            }
+        }
+        return path;
+    }, []);
+
     const draw = React.useCallback(() => {
         try {
             const canvas = canvasRef.current; if (!canvas) return;
@@ -221,12 +305,12 @@ const useAniLogic = () => {
             ctx.save();
             ctx.translate(w / 2 + cam.x, h / 2 + cam.y);
             if (zoom !== 1) ctx.scale(zoom, zoom);
-            const rawFrame = init.timeline[idx];
+            const rawFrame = init.timeline[idx] as any;
             // 组合 ALS: 若 alsOn 开启且存在 workingLayers，则动态组合；否则直接使用当前帧 layers
             let compositeLayers: any[] = [];
             if (rawFrame) {
                 if (alsOn) {
-                    const mainLayer = rawFrame.layers?.find(l => (l as any).__main) || rawFrame.layers?.[0];
+                    const mainLayer = rawFrame.layers?.find((l: any) => (l as any).__main) || rawFrame.layers?.[0];
                     if (mainLayer) compositeLayers.push(mainLayer);
                     for (const meta of workingLayers) {
                         const rec = layerFrameStore.get(meta.id); if (!rec) continue;
@@ -242,7 +326,7 @@ const useAniLogic = () => {
                     });
                 } else {
                     // 仅主层
-                    const mainLayer = rawFrame.layers?.find(l => (l as any).__main) || rawFrame.layers?.[0];
+                    const mainLayer = rawFrame.layers?.find((l: any) => (l as any).__main) || rawFrame.layers?.[0];
                     if (mainLayer) compositeLayers.push(mainLayer);
                 }
             }
@@ -253,6 +337,23 @@ const useAniLogic = () => {
                 for (const L of frameLayersToDraw) {
                     const raw = b64ToU8(L.rgba);
                     const imgData = new ImageData(new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.byteLength), L.w, L.h);
+                    // 线性减淡 (Linear Dodge) 合成：旧实现通过最大通道推导透明度后提升 RGB
+                    // 原逻辑参考旧版 webviewHtml.ts: gfx === 'LINEARDODGE'
+                    if (L.gfx === 'LINEARDODGE') {
+                        try {
+                            const d = imgData.data;
+                            for (let i = 0; i < d.length; i += 4) {
+                                const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+                                const max = Math.max(r, g, b);
+                                const sub = 255 - max; // 剩余空间
+                                const na = Math.min(a, max); // 透明度受亮度限制，避免过亮溢出
+                                d[i + 3] = na;
+                                d[i] = Math.min(255, r + sub);
+                                d[i + 1] = Math.min(255, g + sub);
+                                d[i + 2] = Math.min(255, b + sub);
+                            }
+                        } catch {}
+                    }
                     if (L.tint) {
                         const d = imgData.data; const tr = L.tint[0] / 255, tg = L.tint[1] / 255, tb = L.tint[2] / 255, ta = L.tint[3];
                         for (let i = 0; i < d.length; i += 4) {
@@ -270,6 +371,23 @@ const useAniLogic = () => {
                     if (L.rot) ctx.rotate(L.rot * Math.PI / 180);
                     const sx = typeof L.sx === 'number' ? L.sx : 1; const sy = typeof L.sy === 'number' ? L.sy : 1; if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
                     ctx.drawImage(buf, L.ox | 0, L.oy | 0);
+                    // 仅在主层绘制 SUPERARMOR 像素轮廓线
+                    if (rawFrame?.superArmor && (L as any).__main) {
+                        try {
+                            if (!L.__outlinePath) {
+                                L.__outlinePath = buildOutlinePath(imgData, (L.ox | 0), (L.oy | 0));
+                            }
+                            ctx.save();
+                            const scaleX = typeof L.sx === 'number' && L.sx ? L.sx : 1;
+                            const lw = Math.max(1, 2 / scaleX);
+                            ctx.lineWidth = lw;
+                            ctx.strokeStyle = '#ff0000';
+                            ctx.lineJoin = 'round';
+                            ctx.lineCap = 'round';
+                            ctx.stroke(L.__outlinePath!);
+                            ctx.restore();
+                        } catch {}
+                    }
                     ctx.restore();
                 }
             }
@@ -371,7 +489,7 @@ const useAniLogic = () => {
     }, []);
 
     const styles = useStyles();
-    const fluentTheme = React.useMemo(() => (bg === 'light') ? webLightTheme : webDarkTheme, [bg]);
+    const fluentTheme = React.useMemo(() => getAppTheme(resolveModeFromBg(bg)), [bg]);
     const [panelOpen, setPanelOpen] = React.useState(false);
     const resetView = () => { setCam({ x: 0, y: 0 }); setZoom(1); };
     const frameInfo = `${idx + 1}/${init.timeline.length}`;
@@ -396,19 +514,20 @@ const useAniLogic = () => {
     };
     const [alsPanelOpen, setAlsPanelOpen] = React.useState(false);
     const ui = (
-        <FluentProvider theme={{ ...fluentTheme, fontFamilyBase: '"Microsoft YaHei","微软雅黑",' + fluentTheme.fontFamilyBase }} className={styles.root}>
+    <FluentProvider theme={fluentTheme} className={styles.root}>
             <div className={styles.topPanelShell}>
                 <Collapse orientation='vertical' animateOpacity={true} visible={panelOpen}>
                     <div className={styles.topPanelInner} style={{ transformOrigin: 'top' }}>
                         <div className={styles.panelGroups}>
+                            <MessageBar shape="rounded">
+                                <MessageBarBody>
+                                    <MessageBarTitle>提示</MessageBarTitle>
+                                    拖动: 左键 | 缩放: Ctrl+滚轮 | 重置: 按钮/双击画布
+                                </MessageBarBody>
+                            </MessageBar>
+
                             <div className={styles.section} style={{ width: '100%' }}>
-                                <div className={styles.sectionHeader}>播放 <Button size='small' appearance='primary' onClick={() => setPanelOpen(false)}>收起</Button></div>
-                                <div className={styles.inlineRow}>
-                                    <Button size='small' appearance={playing ? 'primary' : 'secondary'} onClick={() => setPlaying(p => !p)}>{playing ? '暂停' : '播放'}</Button>
-                                    <Button size='small' onClick={gotoPrev}>上帧</Button>
-                                    <Button size='small' onClick={gotoNext}>下帧</Button>
-                                </div>
-                                <div className={styles.inlineRow}><span className={styles.labelSmall}>帧</span><span className={styles.valueBadge}>{frameInfo}</span></div>
+                                <Button size='small' appearance='primary' onClick={() => setPanelOpen(false)}>收起</Button>
                             </div>
                             <div className={styles.section} style={{ width: '100%' }}>
                                 <div className={styles.sectionHeader}>速度</div>
@@ -428,16 +547,16 @@ const useAniLogic = () => {
                                 </div>
                             </div>
                             <div className={styles.section} style={{ width: '100%' }}>
-                                <div className={styles.sectionHeader}>叠加</div>
+                                <div className={styles.sectionHeader}>视图</div>
                                 <div className={styles.inlineRow} style={{ rowGap: 4 }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Switch checked={axes} onChange={(_, d) => setAxes(!!d.checked)} />坐标</label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Switch checked={atk} onChange={(_, d) => setAtk(!!d.checked)} />攻击</label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Switch checked={dmg} onChange={(_, d) => setDmg(!!d.checked)} />受击</label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Switch checked={axes} onChange={(_, d) => setAxes(!!d.checked)} />坐标系</label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Switch checked={atk} onChange={(_, d) => setAtk(!!d.checked)} />攻击框</label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}><Switch checked={dmg} onChange={(_, d) => setDmg(!!d.checked)} />受击框</label>
                                 </div>
                             </div>
                             <div className={styles.section} style={{ width: '100%' }}>
                                 <div className={styles.sectionHeader}>同步</div>
-                                <div className={styles.inlineRow}><label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} title='与编辑器帧/光标同步'><Switch checked={syncEnabled} onChange={(_, d) => { const v = !!d.checked; setSyncEnabled(v); vscode?.postMessage({ type: 'syncToggle', enabled: v }); }} />文档同步</label></div>
+                                <div className={styles.inlineRow}><label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} title='与文本编辑器中ani的帧/光标同步'><Switch checked={syncEnabled} onChange={(_, d) => { const v = !!d.checked; setSyncEnabled(v); vscode?.postMessage({ type: 'syncToggle', enabled: v }); }} />与文档编辑器光标同步</label></div>
                             </div>
                         </div>
                     </div>
@@ -452,16 +571,16 @@ const useAniLogic = () => {
                                 {alsOn && (
                                     <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6, gap: 6 }}>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                            <Button size='small' onClick={incDepth}>前置(+depth)</Button>
-                                            <Button size='small' onClick={decDepth}>后置(-depth)</Button>
-                                            <Button size='small' onClick={incStart}>起始+1</Button>
-                                            <Button size='small' onClick={decStart}>起始-1</Button>
+                                            <Button size='small' onClick={incStart}>起始帧+1</Button>
+                                            <Button size='small' onClick={decStart}>起始帧-1</Button>
+                                            <Button size='small' onClick={incDepth}>图层+1</Button>
+                                            <Button size='small' onClick={decDepth}>图层-1</Button>
                                             <Button size='small' appearance='primary' onClick={saveAls}>保存ALS</Button>
                                         </div>
                                         <div style={{ maxHeight: 180, overflow: 'auto', border: '1px solid var(--vscode-panel-border)', padding: 4, borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                             {workingLayers.map(l => {
                                                 const active = l.id === selectedLayerId;
-                                                return <div key={l.id} onClick={() => setSelectedLayerId(p => p === l.id ? null : l.id)} style={{ cursor: 'pointer', padding: '4px 6px', borderRadius: 4, background: active ? 'rgba(0,120,215,0.35)' : 'rgba(255,255,255,0.04)', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                                                return <div key={l.id} onClick={() => setSelectedLayerId(p => p === l.id ? null : l.id)} style={{ cursor: 'pointer', padding: '4px 6px', borderRadius: 4, background: active ? UI_COLORS.layerActiveBg : UI_COLORS.layerInactiveBg, display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
                                                     <span style={{ fontWeight: 600, marginRight: 8 }}>{l.id}</span>
                                                     <span style={{ opacity: .8 }}>start={l.order} depth={l.relLayer}{l.kind ? (' ' + l.kind) : ''}</span>
                                                 </div>;
@@ -469,7 +588,7 @@ const useAniLogic = () => {
                                             {!workingLayers.length && <div style={{ fontSize: 12, opacity: .6 }}>无 ALS 图层</div>}
                                         </div>
                                         <div style={{ fontSize: 11, opacity: .6, lineHeight: 1.4 }}>
-                                            提示: 选择图层后使用 前置/后置 改变 depth；起始± 调整帧偏移(startFrame)。保存会写回 .ani.als。
+                                            提示: 选择图层后使用按钮进行变更图层以及该图层相对于主ani的起始帧。保存会写回 .ani.als，你需要手动保存。
                                         </div>
                                     </div>
                                 )}
@@ -478,12 +597,16 @@ const useAniLogic = () => {
                     </div>
                 </Collapse>
             </div>
+            {/* 主视图 */}
             {!panelOpen && <div className={styles.miniBar}>
                 <div className={styles.miniBarContent}>
-                    <Button size='small' appearance='primary' onClick={() => setPanelOpen(true)}>展开控制</Button>
-                    <Button size='small' appearance={playing ? 'primary' : 'secondary'} onClick={() => setPlaying(p => !p)}>{playing ? '暂停' : '播放'}</Button>
+                    <Button appearance='primary' onClick={() => setPanelOpen(true)}>展开控制</Button>
+                    <Button appearance={playing ? 'primary' : 'secondary'} onClick={() => setPlaying(p => !p)}>{playing ? '暂停' : '播放'}</Button>
+                    <Button onClick={gotoPrev}>上帧</Button>
+                    <Button onClick={gotoNext}>下帧</Button>
+                    {!alsPanelOpen && <Button onClick={() => setAlsPanelOpen(true)}>ALS</Button>}
+
                     <span>帧 {frameInfo}</span>
-                    {!alsPanelOpen && <Button size='small' onClick={() => setAlsPanelOpen(true)}>ALS</Button>}
                 </div>
             </div>}
             {/* {!alsPanelOpen && <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 20 }}><Button size='small' onClick={() => setAlsPanelOpen(true)}>展开 ALS</Button></div>} */}
