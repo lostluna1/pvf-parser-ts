@@ -145,7 +145,7 @@ const useStyles = makeStyles({
         left: 0,
         width: '100%',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start', // 允许多行时顶部对齐
         gap: '8px',
         padding: '4px 10px',
     background: UI_COLORS.miniBarGradient,
@@ -153,7 +153,7 @@ const useStyles = makeStyles({
         zIndex: 5,
         pointerEvents: 'none'
     },
-    miniBarContent: { display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }
+    miniBarContent: { display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto', flexWrap: 'wrap', rowGap: '4px', maxWidth: '100%' }
 });
 
 
@@ -330,7 +330,11 @@ const useAniLogic = () => {
                     if (mainLayer) compositeLayers.push(mainLayer);
                 }
             }
-            const frameLayersToDraw = alsOn ? compositeLayers : (compositeLayers.length ? compositeLayers : rawFrame?.layers || []);
+            let frameLayersToDraw = alsOn ? compositeLayers : (compositeLayers.length ? compositeLayers : (rawFrame?.layers || []));
+            // 兼容旧结构：时间轴帧没有 layers 属性时，将根帧视为主层
+            if ((!frameLayersToDraw || frameLayersToDraw.length === 0) && rawFrame && !rawFrame.layers && rawFrame.rgba) {
+                frameLayersToDraw = [{ ...rawFrame, __main: true }];
+            }
             if (frameLayersToDraw.length) {
                 const buf = offscreenRef.current || (offscreenRef.current = document.createElement('canvas'));
                 const bctx = buf.getContext('2d')!;
