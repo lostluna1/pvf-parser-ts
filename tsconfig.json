@@ -11,7 +11,8 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "sourceMap": true,
-  "types": ["node", "vscode"]
+    "jsx": "react-jsx",
+  "types": ["node", "vscode", "react", "react-dom"]
   },
   "include": ["src/**/*"]
 }

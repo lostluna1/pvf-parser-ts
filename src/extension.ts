@@ -196,7 +196,50 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     })();
+
+    // React Demo: 右键编辑器空白处上下文菜单打开
+    context.subscriptions.push(vscode.commands.registerCommand('pvf.showReactDemo', () => {
+        const panel = vscode.window.createWebviewPanel('pvfReactDemo', 'React Demo', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
+        panel.webview.html = getReactDemoHtml(panel.webview, context);
+        // 发送初始化数据
+        const sendInit = () => {
+            const active = vscode.window.activeTextEditor?.document.uri.fsPath;
+            const cfg = vscode.workspace.getConfiguration();
+            panel.webview.postMessage({
+                type: 'init',
+                data: {
+                    version: context.extension.packageJSON?.version,
+                    activeFile: active,
+                    npkRoot: cfg.get('pvf.npkRoot'),
+                    time: new Date().toLocaleString()
+                }
+            });
+        };
+        sendInit();
+        // 监听来自 webview 的消息
+        panel.webview.onDidReceiveMessage(msg => {
+            if (!msg || typeof msg !== 'object') return;
+            if (msg.type === 'ping') {
+                panel.webview.postMessage({ type: 'pong', ts: Date.now() });
+            } else if (msg.type === 'requestInit') {
+                sendInit();
+            }
+        });
+    }));
 }
 
 export function deactivate() { }
+
+function getReactDemoHtml(webview: vscode.Webview, ctx: vscode.ExtensionContext): string {
+    const nonce = String(Date.now());
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, 'media', 'webview', 'reactDemo.js'));
+    return `<!DOCTYPE html><html lang="zh-cn"><head><meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}'; font-src ${webview.cspSource} data:;" />
+    <title>React Demo</title>
+    <style>html,body,#root{height:100%;margin:0;font-family:Segoe UI,Arial;background:#1e1e1e;color:#ddd;}</style>
+    </head><body>
+    <div id="root">加载中…</div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+    </body></html>`;
+}
 

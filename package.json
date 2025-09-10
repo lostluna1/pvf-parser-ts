@@ -267,6 +267,10 @@
       {
         "command": "pvf.openSettings",
         "title": "插件设置"
+      },
+      {
+        "command": "pvf.showReactDemo",
+        "title": "React Demo 面板"
       }
     ],
     "keybindings": [
@@ -309,6 +313,11 @@
           "command": "pvf.previewAni",
           "when": "resourceExtname == .ani",
           "group": "navigation@9"
+        }
+        ,{
+          "command": "pvf.showReactDemo",
+          "when": "editorTextFocus",
+          "group": "navigation@50"
         }
       ],
       "editor/title": [
@@ -407,16 +416,24 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "postcompile": "node scripts/copy-script-tags.cjs",
-    "vscode:prepublish": "npm run compile && npm run postcompile",
+  "postcompile": "node scripts/copy-script-tags.cjs && node scripts/copy-webview.cjs",
+  "build:webview": "node scripts/build-webview.mjs",
+  "build:all": "npm run compile && npm run postcompile && npm run build:webview",
+  "vscode:prepublish": "npm run build:all -- --prod",
     "check:icons": "node ./scripts/check-icons.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.103.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "esbuild": "^0.23.0"
   },
   "dependencies": {
+    "@fluentui/react-components": "^9.52.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "iconv-lite": "^0.6.3",
     "sqlite3": "^5.1.7"
