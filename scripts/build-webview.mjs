@@ -2,7 +2,10 @@ import { build } from 'esbuild';
 import { rmSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 
-const entry = resolve('src/webview/reactDemo.tsx');
+const entries = [
+  resolve('src/webview/reactDemo.tsx'),
+  resolve('src/webview/aniPreview.tsx')
+];
 const outdir = resolve('media/webview');
 try { rmSync(outdir, { recursive: true, force: true }); } catch {}
 mkdirSync(outdir, { recursive: true });
@@ -28,7 +31,7 @@ const pkgStubPlugin = {
 
 await build({
   absWorkingDir: resolve('.'),
-  entryPoints: [entry],
+  entryPoints: entries,
   outdir,
   bundle: true,
   minify: isProd,

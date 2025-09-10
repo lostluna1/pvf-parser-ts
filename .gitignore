@@ -2,3 +2,5 @@ node_modules/
 dist/
 node_modules/.package-lock.json
 pvf-parser-ts-0.0.1.vsix
+media/webview/*.js
+media/webview/*.js.map

@@ -4,7 +4,8 @@ import * as indexer from '../npk/indexer';
 import { parseAniText } from './previewAni/parseAni';
 import { buildTimelineFromFrames, buildTimelineFromPvfFrames, buildCompositeTimeline, expandAlsLayers } from './previewAni/buildTimeline';
 import { parseAlsText } from './previewAni/parseAls';
-import { buildPreviewHtml } from './previewAni/webviewHtml';
+// React 重写后不再使用旧 HTML 构造器
+// import { buildPreviewHtml } from './previewAni/webviewHtml';
 
 export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps) {
   // 按文件路径复用面板
@@ -129,7 +130,17 @@ export function registerPreviewAni(context: vscode.ExtensionContext, deps: Deps)
   const webview = panel.webview;
   const addsWithSeq = (lastAlsMeta?.adds||[]).map((a,i)=>({id:a.id, relLayer:a.relLayer, order:a.order, kind:a.kind, seq:i}));
   const initState = loadState();
-  panel.webview.html = buildPreviewHtml(context, webview, timeline, nonce, toolkitSrc, addsWithSeq, lastAlsMeta?.uses||[], [], initState as any);
+  // React 版：注入初始化数据与脚本 (aniPreview.js)
+  const scriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media','webview','aniPreview.js')).toString();
+  const initPayload = { timeline, layers: addsWithSeq, uses: lastAlsMeta?.uses||[], state: initState };
+  panel.webview.html = `<!DOCTYPE html><html lang="zh-cn"><head><meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+  <style>html,body,#root{height:100%;margin:0;padding:0;background:var(--vscode-editor-background);color:var(--vscode-foreground);}</style>
+  </head><body>
+  <div id="root"></div>
+  <script nonce="${nonce}">window.__ANI_INIT=${JSON.stringify(initPayload)};</script>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+  </body></html>`;
 
   // 计算 [FRAME###] 位置映射，存储到面板实例上
   try {
