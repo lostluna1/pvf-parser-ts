@@ -57,82 +57,6 @@ interface EquInfo {
     deadlystrikeResistance?: number; // 致命打击抗性(未使用) deadlystrike resistance
     allActivestatusResistance?: number; // 全状态异常抗性 all activestatus resistance
     piercingResistance?: number; // 贯通/穿刺抗性 piercing resistance
-  /*   {
-            "name": "slow resistance",
-            "description": "减速抗性"
-        },
-        {
-            "name": "freeze resistance",
-            "description": "冰冻抗性"
-        },
-        {
-            "name": "poison resistance",
-            "description": "中毒抗性"
-        },
-        {
-            "name": "stun resistance",
-            "description": "眩晕抗性"
-        },
-        {
-            "name": "curse resistance",
-            "description": "诅咒抗性"
-        },
-        {
-            "name": "blind resistance",
-            "description": "失明抗性"
-        },
-        {
-            "name": "lightning resistance",
-            "description": "感电抗性"
-        },
-        {
-            "name": "stone resistance",
-            "description": "石化抗性"
-        },
-        {
-            "name": "sleep resistance",
-            "description": "睡眠抗性"
-        },
-        {
-            "name": "bleeding resistance",
-            "description": "出血抗性"
-        },
-        {
-            "name": "confuse resistance",
-            "description": "混乱抗性"
-        },
-        {
-            "name": "hold resistance",
-            "description": "束缚抗性"
-        },
-        {
-            "name": "burn resistance",
-            "description": "灼烧抗性"
-        },
-        {
-            "name": "weapon break resistance",
-            "description": "武器破坏抗性"
-        },
-        {
-            "name": "armor break resistance",
-            "description": "防具破坏抗性"
-        },
-        {
-            "name": "deelement resistance",
-            "description": "元素剥离抗性(未使用)"
-        },
-        {
-            "name": "deadlystrike resistance",
-            "description": "致命打击抗性(未使用)"
-        },
-        {
-            "name": "all activestatus resistance",
-            "description": "全状态异常抗性"
-        },
-        {
-            "name": "piercing resistance",
-            "description": "贯通/穿刺抗性"
-        } */
 
     attackSpeed?: number;    // 攻击速度
     moveSpeed?: number;   // 移动速度
@@ -203,7 +127,7 @@ export function registerEquPreviewCodeLens(context: vscode.ExtensionContext, mod
         provideCodeLenses(doc) {
             if (!/\[equipment type\]/i.test(doc.getText())) return [];
             return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
-                title: '预览装备',
+                title: '点此预览装备',
                 command: 'pvf.showEquPreview',
                 arguments: [doc]
             })];
@@ -433,6 +357,11 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
     const rarityDescs = ['普通', '高级', '稀有', '神器', '史诗', '传说'];// 0 普通，1 高级，2 稀有，3 神器，4 史诗，5 传说
     info.rarityDesc = info.rarity != null && info.rarity >= 0 && info.rarity < rarityDescs.length ? rarityDescs[info.rarity] : '未知品质';
     console.log(info.rarityDesc, "rarity");
+    // 符号规则（攻速/施放/移速/命中率）：若结果为负数则原样显示；若为正数则前缀 '+'
+    const plusSigned = (v?: number) => {
+        if (v == null) return '';
+        return v > 0 ? (v % 1 === 0 ? '+' + v : '+' + v) : String(v); // 保留小数情况（若有）
+    };
     // stuckRate为负数则代表增加命中率，正整数则代表减少命中率，转为带操作符的字符串
     let stuckRate = "";
     if (info.stuck != null) {
@@ -443,6 +372,9 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
         }
 
     }
+    const attackSpeed = plusSigned(info.attackSpeed != null ? info.attackSpeed / 10 : undefined);
+    const castSpeed = plusSigned(info.castSpeed != null ? info.castSpeed / 10 : undefined);
+    const moveSpeed = plusSigned(info.moveSpeed != null ? info.moveSpeed / 10 : undefined);
     // 单一模板，无循环拼接
     return `
 <!DOCTYPE html>
@@ -450,7 +382,7 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
 <head>
 	<meta charset="utf-8" />
     <style>
-        body{background:#111;color:#ddd;font:10px/1.4 '宋体',SimSun,serif;padding:8px;}
+        body{background:#111;color:#ddd;font:10px/1.4 '宋体',SimSun,serif;padding:8px;max-width:250px;border:1px solid #666;box-sizing:border-box;}
 		.name{font-size:14px;color:${rarityColor};font-weight:600;margin-bottom:4px;}
         .rarity-desc{font-size:10px; text-align:right; margin-top:-2px; margin-bottom:4px; color:${rarityColor};}
 		.block{margin-top:6px;}
@@ -470,7 +402,7 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
     <div class="rarity-desc">${esc(info.rarityDesc || '')}</div>
     <div class="meta"><span class="weight">${weightKg}</span><span class="price">${info.value ? (info.value / 5 + '金币') : '价格未知'}</span></div>
     <div>${translateJobNames(info.usableJobs)}可以使用</div>
-    <div class="meta"><span class="weight">${info.durability != null ? `<span>耐久度 ${info.durability}/${info.durability}</span>` : ''}</span><span class="price">${info.attachType}</span></div>
+    <div class="meta"><span class="weight">${info.durability != null ? `<span>耐久度 ${info.durability}/${info.durability}</span>` : ''}</span><span class="price">${info.attachType ? tradeTypeMap[info.attachType] : ''}</span></div>
     <div class="meta"><span class="weight">Lv.${info.minLevel ?? ''}以上可以使用</span><span class="price">最上级</span></div>
 
 
@@ -489,18 +421,18 @@ function buildEquHtml(info: EquInfo, resolvedSkillNames?: string[]): string {
   <div>${info.physicalCriticalHit != null ? `<span>物理暴击 +${info.physicalCriticalHit}%</span>` : ''}</div>
   <div>${info.magicalCriticalHit != null ? `<span>魔法暴击 +${info.magicalCriticalHit}%</span>` : ''}</div>
   <div style="${info.elementColor ? `color: ${info.elementColor}` : ''}">${info.elementPropertyText}</div>
-  <div>${info.attackSpeed != null ? `<span>攻击速度 +${info.attackSpeed/10}%</span>` : ''}</div>
-  <div>${info.castSpeed != null ? `<span>施放速度 +${info.castSpeed/10}%</span>` : ''}</div>
-  <div>${info.moveSpeed != null ? `<span>移动速度 +${info.moveSpeed / 10}%</span>` : ''}</div>
+  <div>${info.attackSpeed != null ? `<span>攻击速度 ${attackSpeed}%</span>` : ''}</div>
+  <div>${info.castSpeed != null ? `<span>施放速度 ${castSpeed}%</span>` : ''}</div>
+  <div>${info.moveSpeed != null ? `<span>移动速度 ${moveSpeed}%</span>` : ''}</div>
     <div>${info.jumpPower != null ? `<span>跳跃力 +${info.jumpPower}</span>` : ''}</div>
     <div>${info.roomListMoveSpeedRate != null ? `<span>城镇移动速度 +${info.roomListMoveSpeedRate / 10}%</span>` : ''}</div>
     <div>${info.hitRecovery != null ? `<span>硬直 -${info.hitRecovery}</span>` : ''}</div>
-    <div>${info.stuckResistance != null ? `<span>回避率 +${info.stuckResistance/10}%</span>` : ''}</div>
-    <div>${info.HP_MAX != null ? `<span>生命上限 +${info.HP_MAX}(实际效果${info.HP_MAX*1.73})</span>` : ''}</div>
-    <div>${info.MP_MAX != null ? `<span>魔法上限 +${info.MP_MAX}(实际效果${info.MP_MAX*1.73})</span>` : ''}</div>
+    <div>${info.stuckResistance != null ? `<span>回避率 +${info.stuckResistance / 10}%</span>` : ''}</div>
+    <div>${info.HP_MAX != null ? `<span>生命上限 +${info.HP_MAX}(实际效果${info.HP_MAX * 1.73})</span>` : ''}</div>
+    <div>${info.MP_MAX != null ? `<span>魔法上限 +${info.MP_MAX}(实际效果${info.MP_MAX * 1.73})</span>` : ''}</div>
     <div>${info.allElementalResistance != null ? `<span>所有属性抗性 +${info.allElementalResistance}</span>` : ''}</div>
-    <div>${info.HP_regen_speed != null ? `<span>HP回复速度 +${info.HP_regen_speed*3}(实际效果${info.HP_regen_speed*11})</span>` : ''}</div>
-    <div>${info.MP_regen_speed != null ? `<span>MP回复速度 +${info.MP_regen_speed*3}(实际效果${info.MP_regen_speed*11})</span>` : ''}</div>
+    <div>${info.HP_regen_speed != null ? `<span>HP回复速度 +${info.HP_regen_speed * 3}(实际效果${info.HP_regen_speed * 11})</span>` : ''}</div>
+    <div>${info.MP_regen_speed != null ? `<span>MP回复速度 +${info.MP_regen_speed * 3}(实际效果${info.MP_regen_speed * 11})</span>` : ''}</div>
     <div>${info.elementAttack != null ? `<span>${info.elementalProperty || ''}属性强化 +${info.elementAttack}</span>` : ''}</div>
     <div>${info.allElementalAttack != null ? `<span>所有属性强化 +${info.allElementalAttack}</span>` : ''}</div>
     <div>${info.inventoryLimit != null ? `<span>负重上限 +${(info.inventoryLimit / 1000).toFixed(1).replace(/\.0$/, '')}kg</span>` : ''}</div>
@@ -571,7 +503,7 @@ function rarityToColor(r?: number): string {
     }
 }
 
-function translateJobNames(n :string[]|undefined) :string{
+function translateJobNames(n: string[] | undefined): string {
     if (!n) return '';
     return n.map(job => {
         switch (job) {
@@ -595,7 +527,12 @@ function translateJobNames(n :string[]|undefined) :string{
 // skillLevelUps?: { job: string; skillId: number; value: number }[]; // 技能等级加成
 // 先根据job字符串得到job的lst路径，然后根据skillId在对应的lst中查找技能skl文件的路径，然后读取skl文件的name字段作为技能名称
 
-
+const tradeTypeMap: Record<string, string> = {
+    '[trade]': '无法交易',
+    '[free]': '自由交易',
+    '[sealing]': '封装',
+    '[trade delete]': '无法删除'
+};
 // ==== 新增：技能名称解析逻辑 ====
 const jobLstMap: Record<string, string> = {
     'swordman': 'skill/swordmanskill.lst',
@@ -652,11 +589,11 @@ async function getSklName(model: PvfModel, sklPath: string): Promise<string | un
     const key = sklPath.toLowerCase();
     if (sklNameCache.has(key)) return sklNameCache.get(key);
     try {
-    // 使用 readFileBytes 以触发脚本(.skl)反编译路径，得到 UTF8 文本（含 BOM）
-    let buf = await model.readFileBytes(key);
-    let txt = Buffer.from(buf).toString('utf8');
-    if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
-    const lines = txt.split(/\r?\n/);
+        // 使用 readFileBytes 以触发脚本(.skl)反编译路径，得到 UTF8 文本（含 BOM）
+        let buf = await model.readFileBytes(key);
+        let txt = Buffer.from(buf).toString('utf8');
+        if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
+        const lines = txt.split(/\r?\n/);
         let current: string | null = null;
         for (let raw of lines) {
             raw = raw.trim();
@@ -680,7 +617,7 @@ async function getSklName(model: PvfModel, sklPath: string): Promise<string | un
     } catch { }
     // 最后回退：使用文件名（去扩展）
     const base = key.split('/').pop() || key;
-    const fallback = base.replace(/\.skl$/,'');
+    const fallback = base.replace(/\.skl$/, '');
     sklNameCache.set(key, fallback);
     return fallback;
 }

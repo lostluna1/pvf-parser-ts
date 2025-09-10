@@ -449,7 +449,7 @@
         },
         {
             "name": "attach type",
-            "description": "绑定/交易类型"
+            "description": "绑定/交易类型 \n`[trade]` //无法交易\n`[free]` //自由交易 \n`[sealing]` //封装 \n`[trade delete]` //无法删除"
         },
         {
             "name": "creation rate",
