@@ -12,8 +12,53 @@
 9	`character/Swordman/DemonicSwordman.chr`
 10	`character/Mage/CreatorMage.chr` */
 
-import getPvfContent from "../../pvf/services/getPvfContent";
-import { PvfModel } from "../../pvf/model";
+// 通过消息桥向扩展请求 PVF 文件内容（方案B）
+interface PvfContentResult { key: string; exists: boolean; isText: boolean; text?: string; bytes: Uint8Array; }
+interface PendingRequest { resolve: (v: PvfContentResult) => void; reject: (e: any) => void; }
+const pending = new Map<string, PendingRequest>();
+
+// 只调用一次 acquireVsCodeApi，设置全局标志，后续模块仅复用
+let vscodeApi: any = (window as any).vscodeApi;
+if (!vscodeApi && typeof (window as any).acquireVsCodeApi === 'function' && !(window as any).__vscodeApiAcquired) {
+	try {
+		vscodeApi = (window as any).acquireVsCodeApi();
+		(window as any).__vscodeApiAcquired = true;
+		(window as any).vscodeApi = vscodeApi;
+	} catch (e) {
+		// 忽略（可能在特殊情况下已被其它脚本获取）
+	}
+}
+
+function requestPvfContent(path: string): Promise<PvfContentResult> {
+	const id = 'req_' + Math.random().toString(36).slice(2);
+	return new Promise((resolve, reject) => {
+		pending.set(id, { resolve, reject });
+		try {
+			if (!vscodeApi) throw new Error('vscodeApi unavailable');
+			vscodeApi.postMessage({ type: 'getPvfContent', id, path });
+		} catch (e) { pending.delete(id); reject(e); }
+		// 超时回退
+		setTimeout(() => {
+			if (pending.has(id)) { pending.get(id)!.reject(new Error('pvfContent timeout')); pending.delete(id); }
+		}, 8000);
+	});
+}
+
+// 安装一次全局消息监听
+if (!(window as any).__pvfContentBridgeInstalled) {
+	(window as any).__pvfContentBridgeInstalled = true;
+	window.addEventListener('message', ev => {
+		const msg = ev.data;
+		if (!msg || typeof msg !== 'object') return;
+		if (msg.type === 'pvfContent' && msg.id) {
+			const p = pending.get(msg.id);
+			if (p) {
+				pending.delete(msg.id);
+				if (msg.error) p.reject(new Error(msg.error)); else p.resolve(msg.result as PvfContentResult);
+			}
+		}
+	});
+}
 /* skilllist.lst的内容
 #PVF_File
 0	`skill/SwordmanSkill.lst`
@@ -125,8 +170,12 @@ export async function parseAic(text: string): Promise<AicParseResult> {
 		raw: text
     };
 
-    var a = await getPvfContent("character/character.lst");
-    console.log(a);
+	try {
+		const lst = await requestPvfContent('character/character.lst');
+		console.log('character.lst', lst);
+	} catch (e) {
+		console.warn('获取 character/character.lst 失败', e);
+	}
 	return result;
 }
 

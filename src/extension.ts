@@ -11,6 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { registerSearchInPack } from './pvf/searchQuickOpen';
 import { setPvfModel } from './pvf/runtimeModel';
+import getPvfContent from './pvf/services/getPvfContent';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
@@ -187,7 +188,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
         panel.onDidDispose(() => changeSub.dispose());
-        panel.webview.onDidReceiveMessage(msg => {
+        panel.webview.onDidReceiveMessage(async msg => {
             if (!msg || typeof msg !== 'object') return;
             switch(msg.type){
                 case 'requestInit':
@@ -201,6 +202,17 @@ export function activate(context: vscode.ExtensionContext) {
                         vscode.workspace.applyEdit(edit).then(ok => {
                             if (ok) vscode.window.showInformationMessage('已写回文档'); else vscode.window.showWarningMessage('写回失败');
                         });
+                    }
+                    break; }
+                case 'getPvfContent': {
+                    // Webview 请求 PVF 文件内容
+                    if (typeof msg.path === 'string' && msg.id) {
+                        try {
+                            const result = await getPvfContent(msg.path);
+                            panel.webview.postMessage({ type: 'pvfContent', id: msg.id, path: msg.path, result });
+                        } catch (err: any) {
+                            panel.webview.postMessage({ type: 'pvfContent', id: msg.id, path: msg.path, error: String(err && err.message || err) });
+                        }
                     }
                     break; }
             }

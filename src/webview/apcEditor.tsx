@@ -1,28 +1,23 @@
 import * as React from 'react';
+// 声明全局 VS Code webview API 获取函数（运行时由 VS Code 注入）
+declare function acquireVsCodeApi(): any;
 import { createRoot } from 'react-dom/client';
 import {
     FluentProvider,
-    Textarea,
     Button,
-    Slider,
-    Switch,
-    MessageBar,
-    MessageBarBody,
-    MessageBarTitle,
     makeStyles,
-    tokens,
-    ToolbarButton,
-    Toolbar,
-    Divider
+    tokens
 } from '@fluentui/react-components';
-import { Collapse } from '@fluentui/react-motion-components-preview';
 import { getAppTheme } from './theme';
 import { parseAic } from './apcPage/apc_parser';
 
 // === 全局 VSCode API ===
+// 复用全局缓存的 vscodeApi，避免重复 acquire
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
+const vscode = (window as any).vscodeApi || (typeof acquireVsCodeApi === 'function' && !(window as any).__vscodeApiAcquired ? (function () {
+    try { const api = acquireVsCodeApi(); (window as any).vscodeApi = api; (window as any).__vscodeApiAcquired = true; return api; } catch { return null; }
+})() : null);
 
 // 与 aniPreview 对齐的一组 UI 颜色（简化版）
 const UI_COLORS = {
@@ -34,14 +29,6 @@ const UI_COLORS = {
 };
 
 interface InitData { path: string; text: string; version?: string }
-
-// 统计信息
-function calcStats(text: string) {
-    const lines = text.length ? text.split(/\r?\n/).length : 0;
-    const chars = text.length;
-    const empty = (text.match(/^(?:\r?\n|\s)*$/m) ? 1 : 0); // 粗略示例
-    return { lines, chars, empty };
-}
 
 const useStyles = makeStyles({
     root: {
@@ -99,7 +86,7 @@ const App: React.FC<{ init: InitData }> = ({ init }) => {
     return (
         <FluentProvider theme={theme} className={styles.root}>
 
-            <Button appearance='primary' onClick={ ()  => aicParseTest()}>测试</Button>
+            <Button appearance='primary' onClick={() => aicParseTest()}>测试</Button>
         </FluentProvider>
     );
 };
