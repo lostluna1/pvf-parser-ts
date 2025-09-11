@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF AI",
+  "scopeName": "source.pvf-ai",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#string" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": { "patterns": [ { "name": "comment.line.number-sign.pvf-ai", "match": "#.*$" } ] },
+    "string": { "patterns": [ { "name": "string.quoted.backtick.pvf-ai", "begin": "`", "end": "`" } ] },
+    "number": { "patterns": [ { "name": "constant.numeric.pvf-ai", "match": "(?x) (?:0x[0-9A-Fa-f]+|[0-9]+(?:\\.[0-9]+)?)" } ] },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.pvf-ai",
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.pvf-ai" } },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.tag.end.pvf-ai" } },
+          "patterns": [
+            { "name": "entity.name.tag.pvf-ai", "match": "[A-Za-z_][A-Za-z0-9_ ]*" },
+            { "include": "#string" },
+            { "include": "#number" }
+          ]
+        }
+      ]
+    }
+  },
+  "fileTypes": ["ai"],
+  "uuid": "a1b2c3d4-0000-4000-8000-00000000AI01"
+}

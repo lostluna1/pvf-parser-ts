@@ -82,6 +82,39 @@
           ".equ"
         ],
         "configuration": "./src/scriptLang/equ/language-configuration.json"
+      },
+      {
+        "id": "pvf-ai",
+        "aliases": [
+          "AI",
+          "pvf-ai"
+        ],
+        "extensions": [
+          ".ai"
+        ],
+        "configuration": "./src/scriptLang/ai/language-configuration.json"
+      },
+      {
+        "id": "pvf-aic",
+        "aliases": [
+          "AIC",
+          "pvf-aic"
+        ],
+        "extensions": [
+          ".aic"
+        ],
+        "configuration": "./src/scriptLang/aic/language-configuration.json"
+      },
+      {
+        "id": "pvf-key",
+        "aliases": [
+          "KEY",
+          "pvf-key"
+        ],
+        "extensions": [
+          ".key"
+        ],
+        "configuration": "./src/scriptLang/key/language-configuration.json"
       }
     ],
     "grammars": [
@@ -114,6 +147,21 @@
         "language": "pvf-equ",
         "scopeName": "source.pvf-equ",
         "path": "./syntaxes/pvf-equ.tmLanguage.json"
+      },
+      {
+        "language": "pvf-ai",
+        "scopeName": "source.pvf-ai",
+        "path": "./syntaxes/pvf-ai.tmLanguage.json"
+      },
+      {
+        "language": "pvf-aic",
+        "scopeName": "source.pvf-aic",
+        "path": "./syntaxes/pvf-aic.tmLanguage.json"
+      },
+      {
+        "language": "pvf-key",
+        "scopeName": "source.pvf-key",
+        "path": "./syntaxes/pvf-key.tmLanguage.json"
       }
     ],
     "configuration": {

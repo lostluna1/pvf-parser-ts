@@ -1,0 +1,15 @@
+#PVF_File
+
+[x axis]
+
+[move type]
+	`[straight line]`
+
+[move variable 1]
+	0	0
+
+[landing type]
+	`[vainish]`
+
+[life time]
+	30200

@@ -9,6 +9,12 @@ import { registerLstLanguage } from './lst/registerLst';
 import { registerStrLanguage } from './str/registerStr';
 import { registerEquLanguage } from './equ/registerEqu';
 import { registerEquFormatter } from './equ/formatter';
+import { registerAiLanguage } from './ai/registerAi';
+import { registerAicLanguage } from './aic/registerAic';
+import { registerAiFormatter } from './ai/formatter';
+import { registerAicFormatter } from './aic/formatter';
+import { registerKeyLanguage } from './key/registerKey';
+import { registerKeyFormatter } from './key/formatter';
 
 // 未来可扩展：扫描 scriptTags 下的定义动态生成补全与 hover。
 export function registerScriptLanguages(context: vscode.ExtensionContext, model?: any) {
@@ -23,4 +29,10 @@ export function registerScriptLanguages(context: vscode.ExtensionContext, model?
     registerStrLanguage(context);
     registerEquLanguage(context, model);
     registerEquFormatter(context);
+    registerAiLanguage(context);
+    registerAicLanguage(context);
+    registerAiFormatter(context);
+    registerAicFormatter(context);
+    registerKeyLanguage(context);
+    registerKeyFormatter(context);
 }

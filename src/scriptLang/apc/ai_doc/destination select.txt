@@ -1,0 +1,98 @@
+AI 角色目的地决策方法补充
+
+
+* 目的地决策方式
+ - DestinationSelect.ai 中 return 值对应的目的地决策方式如下：
+
+0	追踪目标
+1	与目标保持一定距离
+2	从目标处逃跑
+3	在目标周围徘徊
+4	随意移动
+5	移动到特定友方角色
+6	移动到特定怪物
+7	在特定友方角色周围移动
+8	在特定友方物体周围移动
+9	在特定怪物周围移动
+10	绕行追踪
+11	与目标保持一定距离（应用随机值）
+12	追踪特定目标（在 is target object in area() 找到的对象）
+13	追踪最近的友方怪物
+14.	与目标保持距离扩展版（与 [keep range distance with target] 一起使用）
+15.	与目标保持距离扩展版（与 [keep range distance with target 1] 一起使用）
+16.	与目标保持距离扩展版（与 [keep range distance with target 2] 一起使用）
+17.	与目标保持距离扩展版（与 [keep range distance with target 3] 一起使用）
+18.	与目标保持距离扩展版（与 [keep range distance with target 4] 一起使用）
+19 	追踪敌人后方（如果在正面会主动绕到背后）
+20 	与敌人在同一直线上时向上或向下回避
+21	逃跑时优先向 y 轴上方或下方逃跑
+22	上下之字形移动
+23	附近有友方时分散
+24	在敌人周围保持一定距离并分散（不会聚在一起，彼此保持间距，也与敌人保持距离）
+25 	躲在附近目标被动物体后面
+26	保持距离时靠近又远离
+27	逃到敌人看不到的地方后，向 y 轴上/下方回避
+28	远离两侧墙壁
+29	追踪特定坐标
+30	与特定坐标保持距离
+31	从特定坐标处逃跑
+32	在特定坐标周围徘徊（未实现）
+33	绕行追踪特定坐标
+34	从特定坐标处逃跑时向 y 轴方向
+35	在特定坐标周围保持距离并聚集
+36	跟随友方物体
+
+* 目标及移动范围指定
+
+1. 指定友方角色
+[set friend character] {AI角色}
+ - 当前友方角色仅支持 AI 角色，可通过数字或名称设置
+ - AI 角色名称表会自动生成于 \Script\AICharacterName.lst
+	（手动更新表的 GM 命令：//save list aicharacter）
+ - 设置的友方角色在 return 值为 5 或 7 时使用
+ - 指定的值在 [think] 和 [/think] 之间有效，最近设置的值优先
+	（此方式同样适用于 [set target monster]、[set friend object]、[set bound]）
+ - 示例：
+
+// 未指定 friend character
+
+	[think] [set friend character] `索罗多斯`
+// friend character 为索罗多斯
+
+		[think] [set friend character] `索罗多斯2`
+// friend character 为索罗多斯2
+		[/think]
+
+// friend character 重新为索罗多斯
+	[/think]
+
+// 未指定 friend character
+
+
+2. 指定特定怪物
+[set target monster] {怪物} {队伍}
+ - 怪物可通过数字或名称设置
+ - 怪物名称表会自动生成于 \Script\MonsterName.lst
+	（手动更新表的 GM 命令：//save list monster）
+ - 设置的怪物在 return 值为 6 或 9 时使用
+ - 队伍可通过数字或名称设置，支持 `enemy`、`neutral`、`friend` 三种值
+	（对应的数字值分别为 -1、0、1）
+ - 若需通过字符输入队伍值，需覆盖 \ask027\DNF_TESTRUN\Script\OperatingValue.lst
+
+
+3. 指定友方物体
+[set friend object] {被动物体}
+ - 被动物体可通过数字或名称设置
+ - 被动物体名称表会自动生成于 \Script\PassiveObjectName.lst
+	（手动更新表的 GM 命令：//save list passiveobject）
+ - 设置的物体在 return 值为 8 时使用
+
+
+4. 指定移动范围
+[set bound] {前视野距离} {后视野距离} {上视野距离} {下视野距离}
+ - 视野距离以屏幕像素为单位
+
+5. 指定目标坐标
+[set target position] {x坐标} {y坐标}
+- 用于将目标设置为特定坐标而非物体。
+- 设置的坐标在 return 值为 29~35 时使用。

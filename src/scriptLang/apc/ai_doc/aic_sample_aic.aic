@@ -1,0 +1,143 @@
+#PVF_File
+
+[appearance point]
+	0
+
+[pvp win point]
+	2	3
+
+[minimum info]
+	<17::ai_Pain_of_WarRock_name`痛苦的魔皇`>
+	8	0	0	1	80	0	0	1	0	0	0
+	`no creature`	0	0	0
+
+[additional character status]
+	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	10	10	10	10	30	50	30	150	30	30	60	30	30	30	30	150	30	0	30	30	30
+
+[/additional character status]
+
+[character status rate]
+	8	15	1	1	1	1	2	1	1	1	1	1	2	1.2	1.2	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	0.3	1	1	1
+
+[/character status rate]
+
+[character status rate special]
+	25	30	1	1	3	1	1	1	3	1	1	1	1	1	1	1	2	1	1	1	1	1	1	1	1500	1500	1500	1500	1500	1500	1500	1500	1500	1500	1500	1500	1500	0.3	1500	1500	1500
+
+[/character status rate special]
+
+[attack damage rate]
+	0.8
+
+[attack damage rate special]
+	1.2
+
+[doll special dungeon]
+	1500
+
+[/doll special dungeon]
+
+[add equipment status from level]
+	1
+
+[custom skill level]
+
+[/custom skill level]
+
+[quick skill]
+	20	1	26	30	4	30	11	21	17	30	6	26
+
+[/quick skill]
+
+[skill]
+	33	1	38	1	197	1	39	1	25	30	46	1	9	20	27	30	18	30	8	30	1	10	34	1	51	10	49	20	47	1	19	26	28	26	5	28	181	3	182	3	184	2	187	1	179	8	170	1	174	70	36	1	190	1	188	10	189	10	169	1	2	23	3	26	14	21	24	18	30	16	29	30
+
+[/skill]
+
+[quick item]
+
+[/quick item]
+
+[equipment]
+	34002	4	0	26240	4	0	10190	4	0	14171	4	0	12187	4	0	18171	4	0	16163	4	0	20081	4	0	22128	4	0	24139	4	0	440004	4	0	450125	4	0	2080010	2	0	2090016	2	0	2100014	2	0	2120012	2	0	2130012	2	0	2150015	2	0	2110014	2	0	2140015	2	0	2160009	2	0
+
+[/equipment]
+
+[think term]
+	200
+
+[destination change term]
+	300
+
+[keep distance with target]
+	50
+
+[warlike]
+	100
+
+[vision]
+	3000
+
+[death tower item]
+
+[/death tower item]
+
+[targeting bonus]
+	100	50	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	`[stand]`
+	`[dash]`	0	0
+	`[slow]`
+	`[confuse]`	0
+
+[ai pattern]
+	`Event.ai`
+	`DestinationSelect.ai`
+	`Action.ai`
+	`MoveMethod.ai`
+
+[/ai pattern]
+
+[key stream]
+	`element_exercise`
+	`element_exercise.key`
+	`mana_runaway`
+	`mana_runaway.key`
+	`crystal`
+	`crystal.key`
+	`chain`
+	`chain.key`
+	`flame`
+	`flame.key`
+	`darkness`
+	`darkness.key`
+	`crystal_up`
+	`crystal_up.key`
+	`chain_up`
+	`chain_up.key`
+	`amjun_up`
+	`amjun_up.key`
+	`element_bust`
+	`element_bust.key`
+	`straight_shoot`
+	`straight_shoot.key`
+
+[/key stream]
+
+[key cooltime]
+	`element_exercise`	60000
+	`mana_runaway`	20000
+	`crystal`	7000
+	`chain`	50000
+	`flam`	40000
+	`darkness`	30000
+	`crystal_up`	30000
+	`chain_up`	30000
+	`amjun_up`	30000
+	`element_bust`	30000
+	`straight_shoot`	30000
+
+[/key cooltime]
+
+[speech on situation]
+
+[/speech on situation]

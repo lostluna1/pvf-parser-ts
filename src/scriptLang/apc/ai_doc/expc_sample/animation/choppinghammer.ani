@@ -1,0 +1,69 @@
+#PVF_File
+
+[FRAME MAX]
+	5
+
+[FRAME000]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		83
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		100
+	[DAMAGE TYPE]
+		`SUPERARMOR`
+	[DAMAGE BOX]
+	-54	-7	1	77	14	41
+	[DAMAGE BOX]
+	-36	-7	27	42	14	71
+
+[FRAME001]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		84
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		100
+	[ATTACK BOX]
+	-19	-15	9	110	30	92
+	[DAMAGE BOX]
+	-28	-7	46	78	14	34
+	[DAMAGE BOX]
+	-54	-7	-1	63	14	48
+
+[FRAME002]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		85
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		70
+	[ATTACK BOX]
+	-19	-15	9	110	30	92
+	[DAMAGE BOX]
+	-22	-7	-1	43	14	70
+
+[FRAME003]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		86
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		70
+	[DAMAGE BOX]
+	-22	-7	-1	43	14	70
+
+[FRAME004]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		87
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		160
+	[DAMAGE BOX]
+	-22	-7	-1	43	14	70

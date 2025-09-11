@@ -1,0 +1,42 @@
+#PVF_File
+
+[LOOP]
+	1
+[FRAME MAX]
+	4
+
+[FRAME000]
+	[IMAGE]
+		``
+		0
+	[IMAGE POS]
+		0	0
+	[DELAY]
+		100
+
+[FRAME001]
+	[IMAGE]
+		``
+		0
+	[IMAGE POS]
+		0	0
+	[DELAY]
+		100
+
+[FRAME002]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		25
+	[IMAGE POS]
+		0	0
+	[DELAY]
+		100
+
+[FRAME003]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		26
+	[IMAGE POS]
+		0	0
+	[DELAY]
+		100

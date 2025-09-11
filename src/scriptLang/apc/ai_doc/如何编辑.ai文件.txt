@@ -1,0 +1,360 @@
+==============================================================================
+==============================================================================
+
+1. * .ai 这是什么？
+
+这是用于编程控制 ai 角色行为的脚本。
+
+可以像用 C 语言编程一样进行逻辑编写（当然实际远不如 C 语言方便 -_-）。
+
+
+==============================================================================
+==============================================================================
+
+
+2. * .ai 的种类
+
+.ai 文件按用途分为多种，简要介绍如下：
+
+  2.1. Action.ai
+	用于执行攻击、BUFF等行为。
+	其返回值会与 .aic (AI Character) 文件的
+	[key stream] 指定的按键输入文件一一对应，用于执行。
+
+  2.2. DestinationSelect.ai
+	用于决定移动目的地的模式。
+	返回值是预先编码的 [目的地决策模式] 数字。
+	（详见下方目的地决策方式数字表）
+		- 详细内容请参见 `destination select.txt`
+
+  2.3. Event.ai
+	用于决定发生某事件时要执行的行为。
+	其返回值会与 .aic (AI Character) 文件的
+	[key stream] 指定的按键输入文件一一对应，用于执行。
+
+  2.4. MoveMethod.ai
+	用于决定到目的地时采用何种移动方式。
+	返回值决定是跳跃、冲刺还是步行等。
+	（详见下方移动方式数字表）
+
+==============================================================================
+==============================================================================
+
+
+3.条件变量介绍
+输入条件变量时可以省略 ` 符号。
+3.1. [void] = 无输入
+3.2. [mind] = 未实现
+3.3. [hp] = 当前体力
+3.4. [mp] = 当前魔力
+3.5. [warlike] = 好战性
+3.6. [target distance] = 当前与目标的像素距离
+3.7. [random] = 0 ~ 99 的随机值（会不断变化！！）
+3.8. [last result] = 上一次运算结果（某些特定函数会把值存到这里）
+3.9. [weapon type] = 武器类型
+近战 = 剑士、格斗家、牧师、战斗法师 = 0
+远程 = 枪手、魔法师类 = 1
+
+3.10. [target state] = 当前目标的状态（站立、坐下、倒地、受伤、跳跃等）
+
+		   每种状态有对应编号（见下方状态数字表）
+
+3.11. `[state]`  = 当前自身状态（stand, sit, down, damage, jump 等）
+		   每种状态有对应编号（见下方状态数字表）
+
+3.12. `[event]`  = 事件类型（damage, attack 等）
+		   每种事件有对应编号（见下方事件数字表）
+
+3.13. `[attack success]` = 攻击是否成功（攻击时 - Event.ai）
+用法：[think] [attack success] 1
+
+3.14. `[hit]` = 是否被击中（受伤时 - Event.ai）
+用法：[think] [hit] 1
+
+3.15. `[element]` = 被击或攻击时的属性（攻击或受伤时 - Event.ai）
+用法：[think] [element] `属性`
+
+3.16. `[casting]` = 是否使用了蓄力技能（技能使用时 - Event.ai）
+用法：[think] [casting] 1
+
+3.17. `[distance]` = 与对方距离（攻击或受伤时 - Event.ai）
+用法：[think] [distance] `距离`
+
+3.18. `[my active status]` = 检查自身状态变化（持续 - Action.ai）
+用法：[think] [my active status] `状态变化`
+
+3.19. `[my state]` = 检查自身状态（持续 - Action.ai）
+用法：[think] [my state] `状态`
+
+3.20. `[target state]` = 检查对方状态（攻击或受伤时 - Event.ai，持续 - Action.ai）
+用法：[think] [target state] `状态`
+
+3.21. `[my active status on]` = 检查自身状态变化（仅状态变化时 - Event.ai）
+用法：[think] [my active status on] `状态变化`
+
+3.22. `[target active status]` = 检查对方状态变化（攻击或受伤时 - Event.ai）
+用法：[think] [target active status] `状态变化`
+
+3.23. `[attack type]` = 检查自身攻击类型（攻击或受伤时 - Event.ai）
+用法：[think] [attack type] `类型`
+
+3.24. `[target type]` = 检查对方攻击类型（攻击或受伤时 - Event.ai）
+用法：[think] [target type] `类型`
+
+3.25. `[attack condition]` = 检查自身打击条件（攻击或受伤时 - Event.ai）
+用法：[think] [attack condition] `打击条件`
+
+3.26. `[use skill]` = 检查是否使用了特定技能（技能使用时 - Event.ai）
+用法：[think] [use skill] 技能索引
+
+3.27. `[stat change]` = 比较 hp 或 mp（持续 - Action.ai）
+用法：[think] [stat change] [hp/mp] `比较方式` 数值
+
+3.28. `[cooltime]` = 指定冷却时间（指定后生效 - Action.ai, Event.ai）
+用法：[think] [cooltime] 数值
+		[true] [return] 1
+	- [true] 时 [return] 生效时 [cooltime] 生效
+	- [cooltime] 必须在 [return] 前的 [think] 中定义才生效
+
+3.29. `[my death]` = 检查自身死亡（自身死亡时 - Event.ai）
+用法：[think] [my death] 1
+
+3.30. `[target death]` = 检查对方死亡（对方死亡时 - Event.ai）
+用法：[think] [target death] 1
+
+3.31. `[revive]` = 检查自身复活（自身复活时 - Event.ai）
+用法：[think] [revive] 1
+
+3.32. `[combo]` = 比较连击数（攻击时 - Event.ai）
+用法：[think] [combo] `比较方式` 数值
+
+3.33. `[aerial]` = 比较空中连击数（攻击时 - Event.ai）
+用法：[think] [aerial] `比较方式` 数值
+
+3.34. `[overkill]` = 检查对方是否被超杀（对方死亡时 - Event.ai）
+用法：[think] [overkill] 1
+
+3.35. [set friend character] = 设置友方角色（DestinationSelect.ai）
+用法：[set friend character] {AI角色编号}
+
+3.36. [set target monster] = 设置目标怪物（DestinationSelect.ai）
+用法：[set target monster] {怪物编号} {队伍(`enemy` or `neutral` or `friend`)}
+
+3.37. [set friend object] = 设置友方物体（DestinationSelect.ai）
+用法：[set friend object] {物体编号}
+
+3.38. [set bound] = 指定 APC 的移动范围（DestinationSelect.ai）
+用法：[set bound] {前方视野距离} {后方视野距离} {上方视野距离} {下方视野距离}
+
+3.39. [auto attack direction] = 设置 APC 输入按键时是否自动朝向敌人
+	默认值为 1，已禁用
+用法：[auto attack direction] {1 或 0}
+
+3.40. [my attack] = 攻击时检查 APC 技能
+用法：[my attack] {技能编号}
+
+3.41 [my hp down] = 检查 hp 减少瞬间
+用法：[my hp down] {`+` 或 `%`} {数值}
+用例：[my hp down] `%` 90
+
+3.41 [my mp down] = 检查 mp 减少瞬间
+用法：[my mp down] {`+` 或 `%`} {数值}
+
+3.42 [check use skill] = 检查是否可用特定技能
+用法：[check use skill] {技能编号}
+
+3.43 [check skill on] = 检查特定技能的开/关状态
+- 可用技能列表请参见 "on off skill list.txt"
+
+用法：[check skill on] {技能编号}
+用例：   [think] [check skill on] 52    // 检查杀意波动的开/关
+			[true]    // 杀意波动开启时
+				[return] `a`
+			[false]    // 杀意波动关闭时
+				[return] `s`
+		[/think]
+
+
+==============================================================================
+==============================================================================
+
+
+4. 运算函数介绍
+
+
+`>=`
+例) `[hp]` `>=` 1000.0
+    当前体力大于等于1000则为 true
+
+`%>=`
+说明) 用于当前值和最大值的条件比较，判断百分比是否大于。
+  例) `[hp]` `%>=` 20.0
+      当前体力大于等于最大体力的20%则为 true
+
+`==`
+例) `[hp]` `==` 99.0
+    当前体力等于99则为 true
+
+`%==`
+
+`>`
+
+`%>`
+
+`<=`
+
+`%<=`
+
+`<`
+
+`%<`
+
+`check random()`
+说明) 随机概率判定。
+  例) `[void]` `check random()` 30.0 100.0
+      30% 概率为 true
+
+`check bonus random()`
+说明) 在成功概率基础上加上指定的 bonus 进行随机判定。
+  例) `[warlike]` `check bonus random()` 30.0 100.0
+      30 + 好战性的概率为 true
+
+`is in range()`
+例) `[hp]` `is in range()` 100.0 500.0
+    当前体力大于等于100且小于等于500则为 true
+
+`get random()`
+例) `[void]` `get random()` 0.0 100.0
+    [last result] 得到0~99的随机值
+
+`is target in attack area()`
+例) `[void]` `is target in attack area()` 100.0(前) 15.0(后) 50.0(上) 50.0(下)
+    当前目标在指定区域则为 true
+
+`enemy number of in attack area()`
+例) `[void]` `enemy number of in attack area()` 100.0(前) 15.0(后) 50.0(上) 50.0(下)
+    区域内敌人数赋值到 [last result]
+
+`is the skill in cooltime()`
+例) `[void]` `is the skill in cooltime()` 46.0
+    46号技能当前处于冷却则为 true
+
+`number of in attack area()`
+用法：[void] `number of in attack area()`  {前} {后} {上} {下} {`enemy`/`neutral`/`friend`/`all`} {`monster`/`character`/`apc`/`passive object`/`summon`/`all`} {索引(-1不检查)或名称}
+索引或名称为 `character` 时可用职业名（见 OperatingValue.lst）
+
+ 'is target object in area()'
+ *指定范围或全地图内的目标
+用法：
+[void] `is target object in area()` {是否用范围判定} {前} {后} {上} {下} {索引} {选择方式}
+ *是否用范围判定为 1 或 0。1 时用前后上下值判定范围内对象，0 时全地图查找。
+ *选择方式：0=默认，1=最近，2=随机。0为先找到的，1为最近，2为随机。
+
+
+==============================================================================
+==============================================================================
+
+
+* 通过示例学习 .ai = 难度：程序员等级5（满级99）
+
+/Script/AICharacter/cuwaki/ai/action.ai 为例：
+
+[ai pattern]
+	`攻击/BUFF等多种动作模式`    // 此 ai 目的
+
+	`[think]` `[void]` `enemy number of in attack area()` 160.0 30.0 20.0 20.0    // 统计该范围内敌人数
+
+		`[think]` `[last result]` `==` 0.0    // 没有敌人
+		`[true]` `[return]` -1            // 什么都不做
+
+		`[false]`
+			`[think]` `[last result]` `==` 1.0    // 敌人1个
+			`[true]` 
+				`[think]` `[void]` `get random()` 0.0 100.0
+					`[think]` `[last result]` `>=` 50.0    // 50%概率
+					`[true]` `[return]` 4            // Upper
+					`[false]` `[return]` 3            // 爆发
+			`[false]`
+				`[think]` `[last result]` `>=` 3.0    // 敌人3个以上
+				`[true]` `[return]` 3            // 执行3号按键 - 爆发
+
+				`[false]` // 2个敌人
+					`[think]` `[void]` `get random()` 0.0 100.0
+						`[think]` `[last result]` `>=` 50.0    // 50%概率
+						`[true]` `[return]` 1            // 执行0号按键 - Upper Slash
+						`[false]` `[return]` 2            // 执行1号按键 - 鬼斩
+
+[/ai pattern]
+
+
+==============================================================================
+==============================================================================
+
+
+* 状态编号表（均为浮点数）
+
+0.0	// stand（站立）
+1.0	// sit（坐下）
+2.0	// sit forever（持续坐下）
+3.0	// damage（受伤）
+4.0	// down（倒地）
+5.0	// die（死亡）
+6.0	// jump（跳跃）
+7.0	// jump attack（跳跃攻击）
+8.0	// attack（攻击）
+9.0	// hold（抓取）
+10.0	// throw（投掷）
+11.0	// dash（冲刺）
+12.0	// dash attack（冲刺攻击）
+13.0	// get item（拾取物品）
+14.0	// buff（增益）
+
+
+==============================================================================
+==============================================================================
+
+
+* 事件编号表（均为浮点数）
+
+0.0 = 我攻击敌人成功时
+1.0 = 我被敌人击中时
+2.0 = 
+
+==============================================================================
+==============================================================================
+
+
+* 目的地决策方式
+ - DestinationSelect.ai 中 return 值对应的目的地决策方式如下
+
+0	追踪目标
+1	与目标保持一定距离
+2	从目标处逃跑
+3	在目标周围徘徊
+4	随意移动
+5	移动到特定友方角色
+6	移动到特定怪物
+7	在特定友方角色周围移动
+8	在特定友方物体周围移动
+9	在特定怪物周围移动
+10	绕行追踪
+11	与目标保持一定距离（应用随机值）
+12	追踪特定目标（在 is target object in area() 找到的对象）
+13	追踪最近的友方怪物
+14.	与目标保持距离扩展版（与 [keep range distance with target] 一起使用）
+15.	与目标保持距离扩展版（与 [keep range distance with target 1] 一起使用）
+16.	与目标保持距离扩展版
+17.	与目标保持距离扩展版
+18.	与目标保持距离扩展版
+19 	追踪敌人后方（如果在正面会主动绕到背后）
+20 	与敌人在同一直线上时向上或向下回避
+21	逃跑时优先向 y 轴上方或下方逃跑
+22	上下之字形移动
+23	在敌人周围保持一定距离并分散（不会聚在一起，彼此保持间距，也与敌人保持距离）
+24 	躲在附近目标被动物体后面
+25	逃到敌人看不到的地方后，向 y 轴上/下方回避
+26	远离两侧墙壁
+
+==============================================================================
+
+==============================================================================

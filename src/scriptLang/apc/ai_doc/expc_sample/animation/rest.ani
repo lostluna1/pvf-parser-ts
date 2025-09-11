@@ -1,0 +1,182 @@
+#PVF_File
+
+[LOOP]
+	1
+[FRAME MAX]
+	16
+
+[FRAME000]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		0
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		100
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME001]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		1
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME002]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		2
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME003]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		3
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME004]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		0
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		100
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME005]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		1
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME006]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		2
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME007]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		3
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME008]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		169
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME009]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		170
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME010]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		171
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME011]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		172
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		300
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME012]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		171
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME013]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		172
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		300
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME014]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		170
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115
+
+[FRAME015]
+	[IMAGE]
+		`Character/Priest/Equipment/Avatar/skin/pr_body%04d.img`
+		169
+	[IMAGE POS]
+		-222	-314
+	[DELAY]
+		150
+	[DAMAGE BOX]
+	-17	-7	0	38	14	115

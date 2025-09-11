@@ -1,0 +1,19 @@
+{
+  "tags": [
+    { "name": "input", "description": "输入块：列出按键/指令与时间 或 通过 pass/random 条件继续", "closing": false },
+    { "name": "loop start", "description": "循环开始：后跟次数 (与 [loop end] 配对)", "closing": false },
+    { "name": "loop end", "description": "循环结束", "closing": false },
+    { "name": "state check", "description": "状态检查块：内部放按键或条件 (常见 skill:XX / target current direction x)", "closing": true },
+    { "name": "state check2", "description": "状态检查", "closing": false },
+
+    { "name": "time", "description": "pass 指令：等待指定毫秒再进入下一 [input]", "closing": false },
+    { "name": "pass", "description": "立即进入下一 [input]", "closing": false },
+    { "name": "random", "description": "随机概率进入下一 [input]：语法 `random` 概率(%) 总值(通常100)", "closing": false },
+    { "name": "enemy distance", "description": "距离条件：正数= >= 距离  负数= <= 距离", "closing": false },
+    { "name": "my zheight", "description": "自身 Z 高度阈值", "closing": false },
+    { "name": "animation frame", "description": "动画帧条件", "closing": false },
+    { "name": "event", "description": "事件条件 (内部实现保留)", "closing": false },
+
+    { "name": "CREATE PASSIVEOBJECT", "description": "可嵌入的 ACT 片段 (兼容 act 语法, 子标签见 act.json)", "closing": true }
+  ]
+}

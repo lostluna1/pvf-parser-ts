@@ -1,0 +1,21 @@
+#PVF_File
+
+[MOTION]
+	[BASE ANI]
+		`../Animation/ChoppingHammer.ani`
+[/MOTION]
+
+[TRIGGER]
+	[FRAME]
+		0	0
+	[DO BEHAVIOR]
+	[ME]
+		0
+[/TRIGGER]
+
+[BEHAVIOR]
+	[SET SPEED]
+		[X AXIS]
+			400
+	[/SET SPEED]
+[/BEHAVIOR]

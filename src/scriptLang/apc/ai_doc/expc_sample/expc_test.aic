@@ -1,0 +1,163 @@
+#PVF_File
+
+[minimum info]
+	`幽灵`	4	0	0	1	70	0	0	1	0	0	0
+	`no creature`	0	0	0
+
+[additional character status]
+	0	0	0	0	0	0	0	0	3000	0	0	0	0	0	0	0	10	10	10	10	100	100	100	100	100	100	100	100	100	100	100	100	100	0	100	100	100
+[/additional character status]
+
+[character status rate]
+	130	130	1	1	1	1	1	60	1	60	1	1	2	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	1	0.3	1	1	1
+[/character status rate]
+
+[attack damage rate]
+	0.07
+
+[far attack reaction rate]
+	80
+
+[add equipment status from level]
+	1
+
+[armor subtype]
+	4
+
+[equipment]
+	35618	3	0
+	11262	1	0
+	15261	1	0
+	13262	1	0
+	19262	1	0
+	17261	1	0
+	20082	1	0
+	22080	1	0
+	24082	1	0
+	55455	2	0
+	55821	2	0
+	56635	2	0
+	57034	2	0
+	58204	2	0
+[/equipment]
+
+[think term]
+	500
+
+[destination change term]
+	500
+
+[keep distance with target]
+	200
+
+[warlike]
+	0
+
+[vision]
+	250
+
+[appearance point]
+	0
+
+[targeting bonus]
+	99	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+	`[stand]`
+	`[dash]`	0	0
+	`[slow]`
+	`[confuse]`	0
+
+[ai pattern]
+	`Event.ai`
+	`DestinationSelect.ai`
+	`Action.ai`
+	`MoveMethod.ai`
+[/ai pattern]
+
+[quick skill]
+	37	13
+	49	13
+	81	8
+	43	20
+	27	16
+[/quick skill]
+
+[skill]
+	44	1
+	73	20
+	23	20
+	28	13
+	9	1
+	63	20
+	6	1
+	11	20
+	99	20
+	64	20
+	10	10
+	181	1
+	182	1
+	184	1
+	179	7
+	173	1
+	170	1
+	34	1
+	174	1
+	175	10
+	171	1
+	176	10
+	180	10
+	186	10
+	188	10
+	189	10
+	178	10
+	190	1
+	1	10
+	8	20
+	169	1
+	7	20
+	61	20
+	71	1
+	174	0
+[/skill]
+
+[key stream]
+	``
+	`combo3.key`
+	``
+	`flash.key`
+	``
+	`nakbong.key`
+	``
+	`grab.key`
+	``
+	`backstep.key`
+	``
+	`s.key`
+	``
+	`d.key`
+	``
+	`f.key`
+	``
+	`g.key`
+	``
+	`damage.key`
+	``
+	`damage2.key`
+[/key stream]
+
+[key cooltime]
+	`damage`	3000
+	`damage2`	3000
+[/key cooltime]
+
+[speech on situation]
+[/speech on situation]
+
+[etc action]
+	`action/attack.act`
+[/etc action]
+
+[move action]
+	`action/move.act`
+
+[proc action]
+	`action/proc.act`

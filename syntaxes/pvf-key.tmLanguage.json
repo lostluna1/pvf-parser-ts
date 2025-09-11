@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF KEY",
+  "scopeName": "source.pvf-key",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#keyword" }
+  ],
+  "repository": {
+    "comment": { "patterns": [ { "name": "comment.line.number-sign.pvf-key", "match": "#.*$" } ] },
+    "string": { "patterns": [ { "name": "string.quoted.backtick.pvf-key", "begin": "`", "end": "`" } ] },
+    "number": { "patterns": [ { "name": "constant.numeric.pvf-key", "match": "(?x) (?:0x[0-9A-Fa-f]+|[0-9]+(?:\\.[0-9]+)?)" } ] },
+    "keyword": { "patterns": [ { "name": "keyword.control.pvf-key", "match": "\\b(time|pass|random|enemy distance|my zheight|animation frame|event)\\b" } ] },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.pvf-key",
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.pvf-key" } },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.tag.end.pvf-key" } },
+          "patterns": [
+            { "name": "entity.name.tag.pvf-key", "match": "[A-Za-z_][A-Za-z0-9_ ]*" },
+            { "include": "#string" },
+            { "include": "#number" }
+          ]
+        }
+      ]
+    }
+  },
+  "fileTypes": ["key"],
+  "uuid": "a1b2c3d4-0000-4000-8000-00000000KEY1"
+}

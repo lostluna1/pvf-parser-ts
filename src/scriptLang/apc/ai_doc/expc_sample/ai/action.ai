@@ -1,0 +1,24 @@
+#PVF_File
+
+[think]
+	[void]
+		`is target in attack area()`	30	-10	15	15
+	[true]
+
+	[think]
+		[check use skill]
+			0
+		[true]
+		[return str]
+			`combo3`
+		[false]
+		[return str]
+			`combo3`
+	[/think]
+
+[false]
+
+[return]
+	-1
+
+[/think]

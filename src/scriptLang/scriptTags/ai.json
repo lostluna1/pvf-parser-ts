@@ -1,0 +1,62 @@
+{
+  "tags": [
+    { "name": "ai pattern", "description": "AI 主模式块：内部通过多层 [think] / [true] / [false] 返回按键索引", "closing": true },
+    { "name": "think", "description": "逻辑判断块：内部比较条件并根据结果进入 [true]/[false] 分支", "closing": true },
+    { "name": "true", "description": "条件为真分支", "closing": false },
+    { "name": "false", "description": "条件为假分支", "closing": false },
+    { "name": "return", "description": "返回按键索引；-1 / 空 表示不执行任何键", "closing": false },
+    { "name": "void", "description": "", "closing": false },
+
+    { "name": "return str", "description": "返回一个字符串", "closing": false },
+    { "name": "import ai", "description": "插入一个.ai文件 \n`示例.ai`", "closing": false },
+    { "name": "hp", "description": "当前 HP 数值 (可与 >=, <=, == 等运算符比较)", "closing": false },
+    { "name": "mp", "description": "当前 MP 数值", "closing": false },
+    { "name": "random", "description": "0~99 随机值 (实时变化)", "closing": false },
+    { "name": "target distance", "description": "与当前目标的像素距离", "closing": false },
+    { "name": "last result", "description": "上一条指令写入的结果 (get random / enemy number of in attack area 等)", "closing": false },
+
+    { "name": ">=", "description": "比较运算：大于等于", "closing": false },
+    { "name": "<=", "description": "比较运算：小于等于", "closing": false },
+    { "name": "==", "description": "比较运算：等于", "closing": false },
+    { "name": ">", "description": "比较运算：大于", "closing": false },
+    { "name": "<", "description": "比较运算：小于", "closing": false },
+    { "name": "%>=", "description": "百分比比较：当前值/最大值 >=", "closing": false },
+    { "name": "%<=", "description": "百分比比较：当前值/最大值 <=", "closing": false },
+    { "name": "%==", "description": "百分比比较：当前值/最大值 ==", "closing": false },
+    { "name": "%>", "description": "百分比比较：当前值/最大值 >", "closing": false },
+    { "name": "%<", "description": "百分比比较：当前值/最大值 <", "closing": false },
+
+    { "name": "get random()", "description": "生成区间随机数写入 [last result]：语法 `[void]` `get random()` min max", "closing": false },
+    { "name": "enemy number of in attack area()", "description": "统计攻击区域内敌人数写入 [last result]：`[void]` `enemy number of in attack area()` 前 后 上 下", "closing": false },
+    { "name": "is target in attack area()", "description": "检测目标是否位于攻击区域", "closing": false },
+    { "name": "is the skill in cooltime()", "description": "检测技能是否处于冷却", "closing": false },
+
+    { "name": "cooltime", "description": "设置当前 [return] 动作附加冷却 (需放在同一层 [think] 且位于 [return] 之前)", "closing": false },
+
+    { "name": "my active status", "description": "检测自身状态变化", "closing": false },
+    { "name": "my state", "description": "检测自身当前状态", "closing": false },
+    { "name": "target state", "description": "检测目标当前状态", "closing": false },
+
+    { "name": "combo", "description": "比较连击数", "closing": false },
+    { "name": "aerial", "description": "比较空中连击数", "closing": false },
+    { "name": "overkill", "description": "目标是否被超杀", "closing": false },
+
+    { "name": "check skill on", "description": "检查技能开关状态：`[think] [check skill on] 52`", "closing": false },
+    { "name": "check use skill", "description": "检查是否可使用特定技能 (技能索引)", "closing": false },
+    { "name": "use skill", "description": "事件：技能使用时 (Event.ai 专用)", "closing": false },
+
+    { "name": "attack success", "description": "攻击成功事件 (Event.ai)", "closing": false },
+    { "name": "hit", "description": "受击事件 (Event.ai)", "closing": false },
+    { "name": "element", "description": "当前攻击/受击属性 (火/水/暗/光/无)", "closing": false },
+
+    { "name": "set friend character", "description": "DestinationSelect：指定友方角色 AI ID", "closing": false },
+    { "name": "set target monster", "description": "DestinationSelect：指定目标怪物 ID 与队伍", "closing": false },
+    { "name": "set friend object", "description": "DestinationSelect：指定友方对象 ID", "closing": false },
+    { "name": "set bound", "description": "DestinationSelect：设置移动边界 前 后 上 下", "closing": false },
+
+    { "name": "auto attack direction", "description": "是否自动面向敌人 (1/0)", "closing": false },
+
+    { "name": "my hp down", "description": "检测 HP 降低瞬间：% 或 + 模式", "closing": false },
+    { "name": "my mp down", "description": "检测 MP 降低瞬间", "closing": false }
+  ]
+}

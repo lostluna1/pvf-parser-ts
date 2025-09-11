@@ -1,0 +1,72 @@
+
+
+*Key设置
+- 使用示例：
+[key stream]	// key名称（可省略），key文件名
+`combo`	`combo attack.key`	// 键名 : `combo`, 索引 : 0
+`AICharacter/cuwaki/key/a.key`	// 键名 : `a`, 索引 : 1
+``	`AICharacter/cuwaki/key/s.key`	// 键名：`s`, 索引 : 2
+[/key stream]
+	
+- 在[key stream]中列出key名称、key的文件名
+- key名称可省略，且不能以“.key”结尾。以“.key”结尾会被识别为key文件名。
+- 如果省略key名称或输入“”，则会从key文件名中移除路径和扩展名，并自动指定key名称。
+- 键名按顺序分配索引，从0开始
+- 键名和分配的索引在ai文件中[return]时使用
+- 可以输入不包含脚本路径的相对路径，或者输入不包含路径的文件名。
+如果未输入路径，则在包含aic文件的目录的子目录“key”下查找文件。.
+
+* APC的派对指定功能
+1. 在AIC文件中指定固定队伍成员
+- 固定队员的成员索引从1开始使用
+- 指定的固定队员不会改变
+- 实际上没有固定队伍成员数量的限制
+지정방법)
+	[party member]	// 成员指数，APC指数
+		1	20402		// 1号是白虎
+		2	5004		// 2号是阿拉德的格斗家
+		3	605		// 3号是骨剑士杰诺
+	[/party member]
+
+2. 自动注册：无需特别指定，自动进行注册
+- 0代表自己
+- 按-1，-2，-3号顺序进行注册
+- 当队员消失时（死亡时），为了填补空缺的编号，索引会被重新分配。
+- 自动注册队员数量实际上没有限制
+3. 使用已注册角色的方法
+- 在使用ai文件中的牧师队伍增益效果前，需指定队员
+- [set party member] {成员索引}：指定增益技能目标队伍成员
+4. 相关附加功能：在ai文件中使用
+	- [party member alive] : 检查指定成员是否仍然存活
+	- [party member hp] 比较 数值 : 检查指定成员的hp
+
+5. 使用示例：ai文件
+[think] [set party member] 2	// 指定注册在2号的队员
+	[think] [party member alive]
+		[true]
+			[think] [party member hp] `%>` 50
+				[true] [return] `a`	// 对2号队员使用快捷键`a`的技能。
+				[false] [return] -1
+			[/think]
+		[false]
+			[return] -1
+	[/think]
+[/think]
+
+* APC的限制生成被动对象功能。
+1. 在aic文件中指定被动对象索引。
+指定方法
+[limit passiveobject] 
+1	// 索引
+1	// 索引
+....
+[/limit passiveobject]
+
+2. apc 用于在特定行为发生时创建一个不同的对象，而不是指定的对象。
+
+* 标签功能
+
+[check accountitem] 0	// 是否检查账户归属物品，1. 检查（默认），0. 不检查，如果检查归属物品，则超过70级的APC无法使用消耗品
+
+
+

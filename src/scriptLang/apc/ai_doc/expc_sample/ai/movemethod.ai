@@ -1,0 +1,14 @@
+#PVF_File
+
+[ai pattern]
+	[think]
+		[target distance]
+			`>=`	400.0
+		[true]
+		[return]
+			1
+		[false]
+		[return]
+			0
+	[/think]
+[/ai pattern]

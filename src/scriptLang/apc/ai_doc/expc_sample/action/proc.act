@@ -1,0 +1,26 @@
+#PVF_File
+
+[MOTION]
+	[BASE ANI]
+		`../Animation/proc.ani`
+[/MOTION]
+
+[TRIGGER]
+	[ON DAMAGE]
+	[DO PROC BEHAVIOR]
+	[ME]
+		0
+[/TRIGGER]
+
+[BEHAVIOR]
+	[CREATE PASSIVEOBJECT]
+		[INDEX]
+			8645
+		[PARTICLE FILENAME]
+			``
+		[LEVEL]
+			0
+		[POS]
+			0	-2	60
+	[/CREATE PASSIVEOBJECT]
+[/BEHAVIOR]

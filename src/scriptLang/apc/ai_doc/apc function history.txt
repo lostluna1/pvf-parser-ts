@@ -1,0 +1,146 @@
+本文件记录了APC功能的新增与改进历史。
+开发者在新增或改进功能时，应将记录添加到文档的最上方。
+
+2008年7月2日 吴永旭
+* 禁止APC生成被动物体功能。
+1. 在aic文件中指定被动物体索引。
+指定方法：
+[limit passiveobject] 
+1	// 索引
+1	// 索引
+....
+[/limit passiveobject]
+
+2. 用于当apc执行特定行为时，生成指定对象以外的其他对象。
+
+2007年10月25日 郑然吾
+* APC的队伍指定功能
+1. 在aic文件中指定固定队员。
+	- 固定队员的成员索引从1开始。
+	- 指定的固定队员不会更改。
+	- 固定队员数量实际上没有限制。
+指定方法：
+	[party member] // 成员索引, APC索引
+		1	20402		// 1号是白虎
+		2	5004		// 2号是阿拉德的格斗家
+		3	605		// 3号是骨剑士杰诺
+	[/party member]
+
+2. 自动注册：未特别指定时自动注册。
+	- 0号表示自身。
+	- -1, -2, -3号依次注册。
+	- 当队员消失（死亡）时，为填补空缺编号会重新分配索引。
+	- 自动注册队员数量实际上没有限制。
+
+3. 使用已注册队员的方法：
+	- 在ai文件中，在使用牧师队伍增益功能前指定队员。
+	- [set party member] {成员索引}：指定增益技能的目标队员。
+
+4. 相关附加功能：在ai文件中使用。
+	- [party member alive]：检查指定成员是否存活。
+	- [party member hp] {比较} {数值}：检查指定成员的hp。
+
+5. 使用示例：ai文件
+[think] [set party member] 2	// 指定注册的2号队员
+	[think] [party member alive]
+		[true]
+			[think] [party member hp] `%>` 50
+				[true] [return] `a`	// 对2号队员使用a槽指定的快速治疗技能。
+				[false] [return] -1
+			[/think]
+		[false]
+			[return] -1
+	[/think]
+[/think]
+
+2007年10月23日 郑然吾
+	- 在ai文件中可使用[check skill on]检查特定技能的开/关状态。
+	- 使用[check skill on]可检查的技能列表参见"on off skill list.txt"文件。
+使用示例：
+	[think] [check skill on] 52	// 检查杀意波动的开/关状态。
+		[true]	// 杀意波动开启时
+			[return] `a`
+		[false]	// 杀意波动关闭时
+			[return] `s`
+	[/think]
+
+2007年10月12日 郑然吾
+	- 在*.ai文件的[return]中输入键名而非数字时，执行与[return str]相同的功能。
+示例：
+	[return] `test`	// 正常运行。
+
+2007年10月12日 郑然吾
+	- 在*.aic文件的[key stream]中新增键名及键文件设置功能。
+使用示例：
+[key stream]
+`combo` `combo.key`	// 名称combo，文件名combo.key
+
+	以下写法与上面相同：
+使用示例：
+[key stream]
+`` `combo.key`	// 键名为空时，从键文件名中移除路径和扩展名，设置combo为名称。
+
+	另一个示例：
+[key stream]
+`AICharacter/cuwaki/key/combo.key`	// 未输入键名时，从键文件中移除路径和扩展名，设置combo为名称。
+	注意：键名不能以`.key`结尾，否则会被识别为键文件名。
+
+2007年10月10日 郑然吾
+	- 在脚本key中新增调用其他key文件的功能。
+使用方法：[import key] `key文件名`
+		[import key]可在[input]出现的位置使用。
+注意：避免无限循环。
+
+	- 在key文件中新增概率开关。
+使用方法：[switch], [/switch], [percent]。
+使用示例：
+	[switch]
+		[percent] 50
+		[import key] `a.key`
+		[percent] 30
+		[import key] `s.key`
+		[percent] 20
+		[exit]
+	[/switch]
+注意：在switch语句中不能直接使用switch语句。如需在switch语句中使用switch语句，请分离文件并使用[import key]。
+		循环功能同样不能在循环中使用循环。请使用[import key]。
+		但在switch语句中可使用循环，在循环中可使用switch语句。
+
+	- 在key文件中强制退出。
+使用方法：[exit]
+
+2007年10月8日 郑然吾
+	- 在脚本ai中新增调用其他ai文件的功能。
+使用方法：[import ai] `ai文件名`
+		[import ai]可在[think]出现的位置使用。
+注意：调用的ai文件和被调用的ai文件都必须是完整的ai文件。
+	   避免无限循环（a.ai -> b.ai -> c.ai -> a.ai->b.ai ... ）。APC加载后执行时会陷入无限循环导致崩溃。
+参考：调用的ai文件和被调用的ai文件分别单独加载，错误信息也分别输出。
+变更：ai文件开头的[ai pattern]可删除。
+
+2007年10月1日 郑然吾
+	- 新增脚本[check use skill]：检查特定技能是否可用。
+使用方法：[check use skill] {技能编号}。
+	输入技能编号即可。
+
+2007年8月20日 郑然吾
+	- 新增脚本`number of in attack area()`。
+使用方法：[void] `number of in attack area()`  {前} {后} {上} {下} {`enemy`/`neutral`/`friend`/`all`} {`monster`/`character`/`apc`/`passive object`/`summon`/`all`} {索引（-1表示不检查）或名称}。
+	索引或名称为`character`时，可使用职业名（参见OperatingValue.lst）。
+
+2007年8月20日 郑然吾
+	- 在aic中忽略[warlike]设置（移除好战性影响）。
+	- 在目的地决策方法中新增绕行追踪。
+		在DestinationSelect.ai中返回10时，执行绕行追踪。
+
+2007年8月20日 郑然吾
+	- 新增脚本[my hp down], [my mp down]。
+		- [my hp down]：检查hp减少的瞬间。
+		使用方法：[my hp down] {`+` 或 `%`} {数值}。
+
+		- [my mp down]：检查mp减少的瞬间。
+		使用方法：[my mp down] {`+` 或 `%`} {数值}。
+
+2007年8月17日 郑然吾
+	- 新增GM命令save list：一次性执行save list item/monster/aicharacter/passiveobject/skill。
+

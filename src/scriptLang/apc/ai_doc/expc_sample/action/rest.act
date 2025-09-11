@@ -1,0 +1,6 @@
+#PVF_File
+
+[MOTION]
+	[BASE ANI]
+		`../Animation/Rest.ani`
+[/MOTION]

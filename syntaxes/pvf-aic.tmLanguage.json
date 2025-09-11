@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PVF AIC",
+  "scopeName": "source.pvf-aic",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#string" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": { "patterns": [ { "name": "comment.line.number-sign.pvf-aic", "match": "#.*$" } ] },
+    "string": { "patterns": [ { "name": "string.quoted.backtick.pvf-aic", "begin": "`", "end": "`" } ] },
+    "number": { "patterns": [ { "name": "constant.numeric.pvf-aic", "match": "(?x) (?:0x[0-9A-Fa-f]+|[0-9]+(?:\\.[0-9]+)?)" } ] },
+    "tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.pvf-aic",
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.pvf-aic" } },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.tag.end.pvf-aic" } },
+          "patterns": [
+            { "name": "entity.name.tag.pvf-aic", "match": "[A-Za-z_][A-Za-z0-9_ ]*" },
+            { "include": "#string" },
+            { "include": "#number" }
+          ]
+        }
+      ]
+    }
+  },
+  "fileTypes": ["aic"],
+  "uuid": "a1b2c3d4-0000-4000-8000-00000000AIC1"
+}
