@@ -6,6 +6,7 @@
     { "name": "false", "description": "条件为假分支", "closing": false },
     { "name": "return", "description": "返回按键索引；-1 / 空 表示不执行任何键", "closing": false },
     { "name": "void", "description": "", "closing": false },
+    { "name": "check key cooltime", "description": "", "closing": false },
 
     { "name": "return str", "description": "返回一个字符串", "closing": false },
     { "name": "import ai", "description": "插入一个.ai文件 \n`示例.ai`", "closing": false },

@@ -4,7 +4,8 @@ import { resolve } from 'path';
 
 const entries = [
   resolve('src/webview/reactDemo.tsx'),
-  resolve('src/webview/aniPreview.tsx')
+  resolve('src/webview/aniPreview.tsx'),
+  resolve('src/webview/apcEditor.tsx')
 ];
 const outdir = resolve('media/webview');
 try { rmSync(outdir, { recursive: true, force: true }); } catch {}

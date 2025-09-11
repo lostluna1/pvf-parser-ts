@@ -10,9 +10,11 @@ import * as indexer from './npk/indexer';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { registerSearchInPack } from './pvf/searchQuickOpen';
+import { setPvfModel } from './pvf/runtimeModel';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
+    setPvfModel(model);
     // 供 metadata.ts 生成图标时访问上下文 (globalStorage)
     (model as any)._extCtx = context;
     const output = vscode.window.createOutputChannel('PVF');
@@ -160,6 +162,51 @@ export function activate(context: vscode.ExtensionContext) {
     // 注册脚本语言特性 (.act 等)
     registerScriptLanguages(context, model);
 
+    // AIC Editor (APC 预览编辑) 命令
+    context.subscriptions.push(vscode.commands.registerCommand('pvf.openAicEditor', async () => {
+        const editor = vscode.window.activeTextEditor; if (!editor) { vscode.window.showWarningMessage('没有活动的编辑器'); return; }
+        const doc = editor.document;
+        if (!/\.aic$/i.test(doc.fileName)) { vscode.window.showWarningMessage('请在一个 .aic 文件中使用该命令'); return; }
+        // 显示源文档在第一列
+        try { await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preserveFocus: true }); } catch {}
+        const panel = vscode.window.createWebviewPanel('pvfAicEditor', `APC: ${doc.fileName.split(/[\\/]/).pop()}`, vscode.ViewColumn.Two, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [context.extensionUri]
+        });
+        try { panel.reveal(vscode.ViewColumn.Two, false); } catch {}
+        const nonce = (() => { let t=''; const s='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for(let i=0;i<32;i++){ t+=s.charAt(Math.floor(Math.random()*s.length)); } return t; })();
+        const clientJsUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media','webview','apcEditor.js')).toString();
+        const init = { path: doc.fileName, text: doc.getText(), version: String(doc.version) };
+        const initJson = JSON.stringify(init).replace(/</g,'\\u003C');
+        panel.webview.html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8" />\n<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; font-src ${panel.webview.cspSource}; script-src ${panel.webview.cspSource} 'nonce-${nonce}';" />\n<title>APC 编辑器</title>\n<style>html,body,#root{height:100%;margin:0;padding:0;}</style></head><body><div id="root"></div>\n<script nonce="${nonce}">window.__INIT=${initJson};</script>\n<script src="${clientJsUri}" nonce="${nonce}"></script></body></html>`;
+        // 文档变更同步
+        const changeSub = vscode.workspace.onDidChangeTextDocument(e => {
+            if (e.document.uri.toString() === doc.uri.toString()) {
+                panel.webview.postMessage({ type: 'docUpdate', text: e.document.getText() });
+            }
+        });
+        panel.onDidDispose(() => changeSub.dispose());
+        panel.webview.onDidReceiveMessage(msg => {
+            if (!msg || typeof msg !== 'object') return;
+            switch(msg.type){
+                case 'requestInit':
+                    panel.webview.postMessage({ type: 'init', data: init });
+                    break;
+                case 'applyEdit': {
+                    if (typeof msg.text === 'string') {
+                        const edit = new vscode.WorkspaceEdit();
+                        const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+                        edit.replace(doc.uri, fullRange, msg.text);
+                        vscode.workspace.applyEdit(edit).then(ok => {
+                            if (ok) vscode.window.showInformationMessage('已写回文档'); else vscode.window.showWarningMessage('写回失败');
+                        });
+                    }
+                    break; }
+            }
+        });
+    }));
+
     // 启动时可选择自动关闭被 VS Code session 恢复的 pvf: 虚拟编辑器标签
     try {
         const cfg = vscode.workspace.getConfiguration();
@@ -197,49 +244,10 @@ export function activate(context: vscode.ExtensionContext) {
         }
     })();
 
-    // React Demo: 右键编辑器空白处上下文菜单打开
-    context.subscriptions.push(vscode.commands.registerCommand('pvf.showReactDemo', () => {
-        const panel = vscode.window.createWebviewPanel('pvfReactDemo', 'React Demo', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
-        panel.webview.html = getReactDemoHtml(panel.webview, context);
-        // 发送初始化数据
-        const sendInit = () => {
-            const active = vscode.window.activeTextEditor?.document.uri.fsPath;
-            const cfg = vscode.workspace.getConfiguration();
-            panel.webview.postMessage({
-                type: 'init',
-                data: {
-                    version: context.extension.packageJSON?.version,
-                    activeFile: active,
-                    npkRoot: cfg.get('pvf.npkRoot'),
-                    time: new Date().toLocaleString()
-                }
-            });
-        };
-        sendInit();
-        // 监听来自 webview 的消息
-        panel.webview.onDidReceiveMessage(msg => {
-            if (!msg || typeof msg !== 'object') return;
-            if (msg.type === 'ping') {
-                panel.webview.postMessage({ type: 'pong', ts: Date.now() });
-            } else if (msg.type === 'requestInit') {
-                sendInit();
-            }
-        });
-    }));
+
 }
 
 export function deactivate() { }
 
-function getReactDemoHtml(webview: vscode.Webview, ctx: vscode.ExtensionContext): string {
-    const nonce = String(Date.now());
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, 'media', 'webview', 'reactDemo.js'));
-    return `<!DOCTYPE html><html lang="zh-cn"><head><meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}'; font-src ${webview.cspSource} data:;" />
-    <title>React Demo</title>
-    <style>html,body,#root{height:100%;margin:0;font-family:Segoe UI,Arial;background:#1e1e1e;color:#ddd;}</style>
-    </head><body>
-    <div id="root">加载中…</div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body></html>`;
-}
+
 

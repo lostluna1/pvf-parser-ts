@@ -335,6 +335,10 @@
         "command": "pvf.showReactDemo",
         "title": "React Demo 面板"
       }
+      ,{
+        "command": "pvf.openAicEditor",
+        "title": "预览编辑 APC"
+      }
     ],
     "keybindings": [
       {
@@ -378,6 +382,11 @@
           "group": "navigation@9"
         },
         {
+          "command": "pvf.openAicEditor",
+          "when": "resourceExtname == .aic",
+          "group": "navigation@9"
+        },
+        {
           "command": "pvf.showReactDemo",
           "when": "editorTextFocus",
           "group": "navigation@50"
@@ -393,6 +402,11 @@
           "command": "pvf.openAniEditor",
           "when": "resourceExtname == .ani",
           "group": "navigation@98"
+        },
+        {
+          "command": "pvf.openAicEditor",
+          "when": "resourceExtname == .aic",
+          "group": "navigation@98"
         }
       ],
       "explorer/context": [
@@ -404,6 +418,11 @@
         {
           "command": "pvf.openAniEditor",
           "when": "resourceExtname == .ani",
+          "group": "navigation@9"
+        },
+        {
+          "command": "pvf.openAicEditor",
+          "when": "resourceExtname == .aic",
           "group": "navigation@9"
         }
       ],
