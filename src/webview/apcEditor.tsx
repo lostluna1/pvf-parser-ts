@@ -75,8 +75,7 @@ const App: React.FC<{ init: InitData }> = ({ init }) => {
 
     async function aicParseTest(): Promise<void> {
         try {
-            const res = await parseAic(init.text);
-            // eslint-disable-next-line no-console
+            const res = await parseAic(init.text, init.path);
             console.log('[AIC parse result]', res);
         } catch (e) {
             console.error('解析失败', e);

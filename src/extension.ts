@@ -11,7 +11,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { registerSearchInPack } from './pvf/searchQuickOpen';
 import { setPvfModel } from './pvf/runtimeModel';
-import getPvfContent from './pvf/services/getPvfContent';
+import getPvfContent, { parsePvfScriptToJson } from './pvf/services/getPvfContent';
+import getIconFrameBase64 from './pvf/services/getIconFrame';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
@@ -212,6 +213,27 @@ export function activate(context: vscode.ExtensionContext) {
                             panel.webview.postMessage({ type: 'pvfContent', id: msg.id, path: msg.path, result });
                         } catch (err: any) {
                             panel.webview.postMessage({ type: 'pvfContent', id: msg.id, path: msg.path, error: String(err && err.message || err) });
+                        }
+                    }
+                    break; }
+                case 'getPvfJsonContent': {
+                    // Webview 请求 PVF 脚本解析 JSON
+                    if (typeof msg.path === 'string' && msg.id) {
+                        try {
+                            const result = await parsePvfScriptToJson(msg.path);
+                            panel.webview.postMessage({ type: 'pvfJsonContent', id: msg.id, path: msg.path, result });
+                        } catch (err: any) {
+                            panel.webview.postMessage({ type: 'pvfJsonContent', id: msg.id, path: msg.path, error: String(err && err.message || err) });
+                        }
+                    }
+                    break; }
+                case 'getIconFrame': {
+                    if (typeof msg.path === 'string' && typeof msg.frameIndex === 'number' && msg.id) {
+                        try {
+                            const result = await getIconFrameBase64(msg.path, msg.frameIndex);
+                            panel.webview.postMessage({ type: 'iconFrame', id: msg.id, path: msg.path, frameIndex: msg.frameIndex, result });
+                        } catch (err:any) {
+                            panel.webview.postMessage({ type: 'iconFrame', id: msg.id, path: msg.path, frameIndex: msg.frameIndex, error: String(err && err.message || err) });
                         }
                     }
                     break; }
