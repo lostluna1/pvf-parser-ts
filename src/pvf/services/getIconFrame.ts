@@ -6,9 +6,21 @@ export interface IconFrameResult { ok: boolean; base64?: string; error?: string;
 // path: 图像资源脚本路径（如 texture/icon/foo.img） frameIndex: 帧序号
 export async function getIconFrameBase64(path: string, frameIndex: number): Promise<IconFrameResult> {
   try {
-    const norm = path.trim().replace(/[`'"\\]+/g,'/').replace(/^[\/]+/,'').replace(/\/+/g,'/').toLowerCase();
+  let norm = path.trim();
+  // 替换引号/反斜杠为正斜杠
+  norm = norm.replace(/[`'"\\]+/g,'/');
+  // 统一多重斜杠
+  norm = norm.replace(/\/+/g,'/');
+  // 去掉首部斜杠
+  norm = norm.replace(/^[\/]+/, '');
+  // 去掉末尾空白与末尾斜杠（尤其是 *.img/ 情况）
+  norm = norm.replace(/\s+$/,'').replace(/\/+$/,'');
+  // 如果出现 *.img/ 这种多余的斜杠，再次裁剪
+  norm = norm.replace(/(\.img)\/+$/i, '$1');
+  norm = norm.toLowerCase();
     // 确保有 sprite/ 前缀
     const logical = norm.startsWith('sprite/') ? norm : 'sprite/' + norm;
+    // console.log('getIconFrame logical', logical);
     // 从配置获取 npk 根目录
     const root = (vscode.workspace.getConfiguration().get<string>('pvf.npkRoot') || '').trim();
     if (!root) return { ok:false, error:'no_npk_root' };

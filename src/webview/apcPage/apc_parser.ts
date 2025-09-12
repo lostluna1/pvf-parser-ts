@@ -1,30 +1,9 @@
-/* character.lst的内容
-#PVF_File
-0	`character/Swordman/Swordman.chr`
-1	`character/Fighter/Fighter.chr`
-2	`character/Gunner/Gunner.chr`
-3	`character/Mage/Mage.chr`
-4	`character/Priest/Priest.chr`
-5	`character/Gunner/ATGunner.chr`
-6	`character/Thief/Thief.chr`
-7	`character/Fighter/ATFighter.chr`
-8	`character/Mage/ATMage.chr`
-9	`character/Swordman/DemonicSwordman.chr`
-10	`character/Mage/CreatorMage.chr` */
 
-// 不能直接在 webview 内 import 扩展侧的解析函数（无 model 环境），需要通过消息桥请求
+import { AicParseResult, EquipmentInfo, getGradeName, SkillInfo } from "./apc_types";
 
-
-// 通过消息桥向扩展请求 PVF 文件内容（方案B）
-interface PvfContentResult { key: string; exists: boolean; isText: boolean; text?: string; bytes: Uint8Array; }
-interface PendingRequest { resolve: (v: PvfContentResult) => void; reject: (e: any) => void; }
-const pending = new Map<string, PendingRequest>();
-interface PvfJsonPending { resolve: (v: any) => void; reject: (e: any) => void; }
-const pendingJson = new Map<string, PvfJsonPending>();
-interface IconPending { resolve:(v:any)=>void; reject:(e:any)=>void; }
-const pendingIcon = new Map<string, IconPending>();
-
-// 缓存当前活动 AIC 文档文本 & 路径（由扩展实时推送）
+// === RPC pending map & current doc state (restored) ===
+interface RpcPending { resolve: (v: any) => void; reject: (e: any) => void; }
+const pendingRpc = new Map<string, RpcPending>();
 let currentDocText: string | undefined = (window as any).__INIT?.text;
 let currentDocPath: string | undefined = (window as any).__INIT?.path;
 
@@ -40,220 +19,199 @@ if (!vscodeApi && typeof (window as any).acquireVsCodeApi === 'function' && !(wi
 	}
 }
 
-function requestPvfContent(path: string): Promise<PvfContentResult> {
-	const id = 'req_' + Math.random().toString(36).slice(2);
+function rpcCall(method: string, ...params: any[]): Promise<any> {
+	const id = 'rpc_' + Math.random().toString(36).slice(2);
 	return new Promise((resolve, reject) => {
-		pending.set(id, { resolve, reject });
-		try {
-			if (!vscodeApi) throw new Error('vscodeApi unavailable');
-			vscodeApi.postMessage({ type: 'getPvfContent', id, path });
-		} catch (e) { pending.delete(id); reject(e); }
-		// 超时回退
-		setTimeout(() => {
-			if (pending.has(id)) { pending.get(id)!.reject(new Error('pvfContent timeout')); pending.delete(id); }
-		}, 8000);
+		pendingRpc.set(id, { resolve, reject });
+		try { if (!vscodeApi) throw new Error('vscodeApi unavailable'); vscodeApi.postMessage({ type: 'rpc', id, method, params }); }
+		catch (e) { pendingRpc.delete(id); reject(e); }
+		setTimeout(() => { if (pendingRpc.has(id)) { pendingRpc.get(id)!.reject(new Error(method + ' timeout')); pendingRpc.delete(id); } }, 10000);
 	});
 }
-function requestPvfJsonContent(path: string): Promise<any> {
-	const id = 'req_json_' + Math.random().toString(36).slice(2);
-	return new Promise((resolve, reject) => {
-		pendingJson.set(id, { resolve, reject });
-		try {
-			if (!vscodeApi) throw new Error('vscodeApi unavailable');
-			vscodeApi.postMessage({ type: 'getPvfJsonContent', id, path });
-		} catch (e) { pendingJson.delete(id); reject(e); }
-		setTimeout(() => {
-			if (pendingJson.has(id)) { pendingJson.get(id)!.reject(new Error('pvfJsonContent timeout')); pendingJson.delete(id); }
-		}, 10000);
-	});
-}
+const pvfApi = {
+	getContent: (p: string) => rpcCall('getPvfContent', p),
+	getJson: (p: string) => rpcCall('getPvfJson', p),
+	getIconFrame: (p: string, i: number) => rpcCall('getIconFrame', p, i),
+	// 注意：扩展侧函数签名是 (lstPath, code)，这里保持一致
+	getNameByCodeAndLst: (lst: string, code: number) => rpcCall('getNameByCodeAndLst', lst, code),
+	getIconBase64ByCode: (lst: string, code: number) => rpcCall('getIconBase64ByCode', lst, code),
+};
 // 安装一次全局消息监听
-if (!(window as any).__pvfContentBridgeInstalled) {
-	(window as any).__pvfContentBridgeInstalled = true;
+if (!(window as any).__pvfRpcInstalled) {
+	(window as any).__pvfRpcInstalled = true;
 	window.addEventListener('message', ev => {
 		const msg = ev.data;
 		if (!msg || typeof msg !== 'object') return;
-		if (msg.type === 'pvfContent' && msg.id) {
-			const p = pending.get(msg.id);
-			if (p) {
-				pending.delete(msg.id);
-				if (msg.error) p.reject(new Error(msg.error)); else p.resolve(msg.result as PvfContentResult);
-			}
-		} else if (msg.type === 'pvfJsonContent' && msg.id) {
-			const p = pendingJson.get(msg.id);
-			if (p) {
-				pendingJson.delete(msg.id);
-				if (msg.error) p.reject(new Error(msg.error)); else p.resolve(msg.result);
-			}
-		} else if (msg.type === 'iconFrame' && msg.id) {
-			const p = pendingIcon.get(msg.id);
-			if (p) {
-				pendingIcon.delete(msg.id);
-				if (msg.error) p.reject(new Error(msg.error)); else p.resolve(msg.result);
-			}
-			} else if (msg.type === 'docUpdate') {
-				if (typeof msg.text === 'string') currentDocText = msg.text;
-				if (typeof msg.path === 'string') currentDocPath = msg.path;
-			}
+		if (msg.type === 'rpcResult' && msg.id) {
+			const p = pendingRpc.get(msg.id);
+			if (p) { pendingRpc.delete(msg.id); msg.ok ? p.resolve(msg.result) : p.reject(new Error(msg.error)); }
+		} else if (msg.type === 'docUpdate') {
+			if (typeof msg.text === 'string') currentDocText = msg.text;
+			if (typeof msg.path === 'string') currentDocPath = msg.path;
+		}
 	});
 }
-function requestIconFrame(path:string, frameIndex:number):Promise<any>{
-	const id='req_icon_'+Math.random().toString(36).slice(2);
-	return new Promise((resolve,reject)=>{
-		pendingIcon.set(id,{resolve,reject});
-		try{ if(!vscodeApi) throw new Error('vscodeApi unavailable'); vscodeApi.postMessage({type:'getIconFrame', id, path, frameIndex}); }
-		catch(e){ pendingIcon.delete(id); reject(e); }
-		setTimeout(()=>{ if(pendingIcon.has(id)){ pendingIcon.get(id)!.reject(new Error('iconFrame timeout')); pendingIcon.delete(id);} },8000);
-	});
-}
-/* skilllist.lst的内容
-#PVF_File
-0	`skill/SwordmanSkill.lst`
-1	`skill/FighterSkill.lst`
-2	`skill/GunnerSkill.lst`
-3	`skill/MageSkill.lst`
-4	`skill/PriestSkill.lst`
-5	`skill/ATGunnerSkill.lst`
-6	`skill/ThiefSkill.lst`
-7	`skill/ATFighterSkill.lst`
-8	`skill/ATMageSkill.lst`
-9	`skill/DemonicSwordman.lst`
-10	`skill/CreatorMage.lst` */
 
 
 
-export interface AicMinimumInfo {
-	variant: 'angle' | 'simple';
-	rawNameLine: string;        // 原始第一行
-	characterId?: number;       // angle 形式里 <17::...> 的数字
-	characterName: string;      // 提取出的中文/文本名称
-	classId?: number;           // 属性行第1列
-	growType?: number;          // 属性行第2列
-	level?: number;             // 属性行第5列（索引4）
-	attributes: number[];       // 整行全部数字
-	creatureName?: string;      // 第三行反引号中的名字
-	creatureStats: number[];    // creature 行后续数字
-	startLine: number;          // 段起始行号 (0-based)
-}
 
-export interface AicParseResult {
-	minimumInfo?: AicMinimumInfo;
-
-	raw: string; // 原文（便于后续二次分析）
-	growTypeName?: string; // 从 job 文件中解析出的当前转职名称
-	skills?: SkillInfo[]; // quick skill 段解析出的技能列表
-	nodes?: any[]; // 解析出的全部脚本节点
-}
-
-
-export async function parseAic(text: string, filePathFromInit?: string): Promise<AicParseResult> { // 增加路径参数
+export async function parseAic(text: string): Promise<AicParseResult> { // 增加路径参数
 
 	const result: AicParseResult = {
 		nodes: [],
 		raw: (currentDocText || text || '')
-    };
-	// 单行路径规范化：优先 currentDocPath，其次传入路径；去头部斜杠，反斜杠转正斜杠，合并重复，转小写
-	const normPath = (currentDocPath ?? filePathFromInit)
-		?.trim()
-		.replace(/^[\\/]+/, '')      // 去掉前导斜杠
-		.replace(/\\+/g, '/')        // 反斜杠 -> /
-		.replace(/\/+/g, '/')         // 合并重复正斜杠
-		.toLowerCase();
-	try {
-		if (normPath) {
-			const currentJson = await requestPvfJsonContent(normPath);
-			console.log('[APC] fetched JSON for', normPath, currentJson);
-			result.nodes = currentJson?.nodes || [];
-		} else {
-			result.nodes = [];
-		}
-	} catch (e) {
-		console.warn('[APC] 获取 JSON 失败 path=', normPath, e);
-		result.nodes = [];
+	};
+
+	const rawPath = currentDocPath;
+	const normPath = rawPath ? rawPath.trim()
+		.replace(/^[\\/]+/, '')
+		.replace(/\\+/g, '/')
+		.replace(/\/+/g, '/')
+		.toLowerCase() : undefined;
+	if (normPath) {
+		const currentJson = await pvfApi.getJson(normPath);
+		// console.log('[APC] fetched JSON for', normPath, currentJson);
+		result.nodes = currentJson?.nodes || [];
 	}
 	var chrIndex = result?.nodes?.[0]?.numbers?.[0] ?? 0;
 	var growType = result?.nodes?.[0]?.numbers?.[1] ?? 0;
-	try {
-		// 1. 读取 character/character.lst (返回 lstEntries: {key,value})
-		const chrListJson = await requestPvfJsonContent('character/character.lst');
-		const chrEntry = chrListJson?.lstEntries?.find((e: any) => e.key === chrIndex);
+	// 1. 读取 character/character.lst (返回 lstEntries: {key,value})
+	const chrListJson = await pvfApi.getJson('character/character.lst');
+	const chrEntry = chrListJson?.lstEntries?.find((e: any) => e.key === chrIndex);
 
-		if (chrEntry?.value) {
-			// 2. 读取对应职业 .chr 脚本，解析为节点数组
-			const chrPath = chrEntry.value.toLowerCase();
-			const jobJson = await requestPvfJsonContent(chrPath);
-			// 3. 找到 tag == 'growtype name' 的节点
-			const growNode = (jobJson?.nodes || []).find((n: any) => n.tag === 'growtype name');
-			if (growNode?.valueLines?.length) {
-				// valueLines 里每行形如 `名称`，根据 growType 取对应行（越界则忽略）
-				const names = growNode.valueLines.map((l: string) => {
-					const m = l.match(/`([^`]+)`/); return m ? m[1] : l.trim();
-				});
-				result.growTypeName = names[growType] || names[0] || '';
-				console.log('[APC] growTypeName resolved:', result.growTypeName, 'growType=', growType, 'all=', names);
-			} else {
-				console.warn('[APC] growtype name node not found or empty in', chrPath);
-			}
-
-			var quickSkills = await getQuickSkills(result.nodes || []);
-			result.skills = quickSkills;
-			console.log('[APC] quickSkills=', result.skills);
+	if (chrEntry?.value) {
+		// 2. 读取对应职业 .chr 脚本，解析为节点数组
+		const chrPath = chrEntry.value.toLowerCase();
+		const jobJson = await pvfApi.getJson(chrPath);
+		// 3. 找到 tag == 'growtype name' 的节点
+		const growNode = (jobJson?.nodes || []).find((n: any) => n.tag === 'growtype name');
+		if (growNode?.valueLines?.length) {
+			// valueLines 里每行形如 `名称`，根据 growType 取对应行（越界则忽略）
+			const names = growNode.valueLines.map((l: string) => {
+				const m = l.match(/`([^`]+)`/); return m ? m[1] : l.trim();
+			});
+			result.growTypeName = names[growType];
+			// console.log('[APC] growTypeName resolved:', result.growTypeName, 'growType=', growType, 'all=', names);
+			result.allGrowTypeNames = names;
 		} else {
-			console.warn('[APC] character.lst entry not found for classId', chrIndex);
+			console.warn('[APC] growtype name node not found or empty in', chrPath);
 		}
-	} catch (e) {
-		console.warn('获取 character/character.lst 失败', e);
+		result.jobAllSkills = await getAllSkillsJob(jobJson?.nodes || []);
+		result.quickSkills = await getQuickSkills(result.nodes || [], result.jobAllSkills || []);
+		result.skills = await getOwnedSkills(result.nodes || [], result.jobAllSkills || []);
+		result.equipments = await getEquipmentInfo(result.nodes || []);
+	} else {
+		console.warn('[APC] character.lst entry not found for classId', chrIndex);
 	}
 	return result;
 }
 
-// 从节点数组中提取 quick skill 段，返回技能列表
-async function getQuickSkills(nodes: any[]): Promise<SkillInfo[]> {
-
-	var skills = nodes.filter((n: { tag: string }) => n.tag === 'quick skill');
-	skills = skills.length > 0 ? skills[0].children || [] : [];
-	// 需要对skills两两分组,组成SkillInfo对象
-	var skillArr: SkillInfo[] = [];
-	for (let i = 0; i < skills.length; i += 2) {
-		const skill: SkillInfo = {
-			id: skills[i].raw,
-			level: skills[i + 1]?.raw || 0
-		};
-		skillArr.push(skill);
-	}
+async function getAllSkillsJob(nodes: any[]): Promise<SkillInfo[]> {
 	var sklListPath = 'skill/skilllist.lst';
+	var skillInfos: SkillInfo[] = [];
 	var chrIndex = nodes?.[0]?.numbers?.[0] ?? 0;
 	// 读取 skilllist.lst，找到对应技能名称
 	var sklPaths = '';
-	var sklListJson = await requestPvfJsonContent(sklListPath);
+	var sklListJson = await pvfApi.getJson(sklListPath);
 	sklPaths = sklListJson.lstEntries[chrIndex].value;
-	const sklJson = await requestPvfJsonContent(sklPaths);
-	for (let skill of skillArr) {
-		const skillId = Number(skill.id);
-		const sklPath = sklJson?.lstEntries?.find((e: any) => e.key === skillId)?.value;
-		if (!sklPath) continue;
-		const sklEntry = await requestPvfJsonContent(sklPath);
+	const sklJson = await pvfApi.getJson(sklPaths);
+	// console.log('sklPaths', sklPaths);
+	// console.log('sklJson', sklJson);
+	skillInfos = [];
+	for (const entry of sklJson?.lstEntries || []) {
+		const sklPath = entry.value;
+		const sklEntry = await pvfApi.getJson(sklPath);
 		const skillName = sklEntry?.nodes?.find((n: any) => n.tag === 'name')?.tokens?.[0] || '';
 		const iconTokens = sklEntry?.nodes?.find((n: any) => n.tag === 'icon')?.tokens;
 		const iconPath = iconTokens?.[0] || '';
 		const iconIndex = Number(iconTokens?.[1] || 0);
-		skill.skillName = skillName;
+		let iconBase64: any = undefined;
 		if (iconPath) {
 			try {
-				const iconRes = await requestIconFrame(iconPath, iconIndex);
-				if (iconRes?.ok && iconRes.base64) skill.iconBase64 = iconRes.base64;
-			} catch (e) { /* 忽略单个图标错误 */ }
+				const iconRes = await pvfApi.getIconFrame(iconPath, iconIndex);
+				if (iconRes?.ok) iconBase64 = iconRes.base64;
+			} catch { }
 		}
-
+		skillInfos.push({
+			id: entry.key,
+			skillName: skillName.replace(/`+/g, '').trim(),
+			iconBase64,
+			level: 0
+		});
 	}
-	console.log('skillArr', skillArr);
-	return skillArr;
+
+	return skillInfos;
 }
 
-interface SkillInfo {
-	id: number;
-	skillName?: string;
-	iconBase64?: string;
-	level: number;
+// 从节点数组中提取 quick skill 段，返回技能列表（复用已获取的 allSkills）
+async function getQuickSkills(nodes: any[], allSkills: SkillInfo[]): Promise<SkillInfo[]> {
+	const quickSkillNode = nodes.find((n: any) => n.tag === 'quick skill');
+	const children = quickSkillNode ? (quickSkillNode.children || []) : [];
+	const result: SkillInfo[] = [];
+	for (let i = 0; i < children.length; i += 2) {
+		const idNum = Number(children[i]?.raw);
+		const lvl = children[i + 1]?.raw || 0;
+		const base = allSkills.find(s => s.id === idNum);
+		result.push({
+			id: idNum,
+			level: lvl,
+			skillName: base?.skillName,
+			iconBase64: base?.iconBase64
+		});
+	}
+	return result;
 }
-// 未来: 可添加解析技能段、动作映射等；当前仅实现 minimum info。
+
+async function getOwnedSkills(nodes: any[], allSkills: SkillInfo[]): Promise<SkillInfo[]> {
+
+	const skillNode = nodes.find((n: any) => n.tag === 'skill');
+	const children = skillNode ? (skillNode.children || []) : [];
+	const result: SkillInfo[] = [];
+	for (let i = 0; i < children.length; i += 2) {
+		const idNum = Number(children[i]?.raw);
+		const lvl = children[i + 1]?.raw || 0;
+		const base = allSkills.find(s => s.id === idNum);
+		result.push({
+			id: idNum,
+			level: lvl,
+			skillName: base?.skillName,
+			iconBase64: base?.iconBase64
+		});
+	}
+	return result.filter(s => !!s.skillName); // 仅保留能找到名称的
+}
+
+async function getEquipmentInfo(nodes: any[]): Promise<EquipmentInfo[]> {
+	const equipmentNode = nodes.find((n: any) => n.tag === 'equipment');
+	const _t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+	const equListJson = await pvfApi.getJson('equipment/equipment.lst');
+	const _t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+	try { console.log('[APC] equipment/equipment.lst 加载耗时', (_t1 - _t0).toFixed(1) + 'ms'); } catch {}
+	console.log('[APC] equipment.lst', equListJson);
+	if (!equipmentNode) return [];
+	try {
+		const numbers: number[] = equipmentNode.numbers || [];
+		const equipments: EquipmentInfo[] = [];
+		for (let i = 0; i < numbers.length; i += 3) {
+			const id = numbers[i] ?? 0;
+			const grade = numbers[i + 1] ?? 0;
+			const powerUpLevel = numbers[i + 2] ?? 0;
+			const [nameRes, iconRes] = await Promise.all([
+				pvfApi.getNameByCodeAndLst('equipment/equipment.lst', id).catch(() => undefined),
+				pvfApi.getIconBase64ByCode('equipment/equipment.lst', id).catch(() => undefined)
+			]);
+			equipments.push({
+				id,
+				grade,
+				powerUpLevel,
+				gradeName: getGradeName(grade),
+				name: (nameRes && nameRes.ok) ? (nameRes.name || '') : '',
+				iconBase64: (iconRes && iconRes.ok) ? iconRes.base64 : undefined
+			});
+		}
+		return equipments;
+	} catch (error) {
+		console.error('[APC] getEquipmentInfo error:', error);
+		return [];
+	}
+}

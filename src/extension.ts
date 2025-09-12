@@ -11,7 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { registerSearchInPack } from './pvf/searchQuickOpen';
 import { setPvfModel } from './pvf/runtimeModel';
-import getPvfContent, { parsePvfScriptToJson } from './pvf/services/getPvfContent';
+import getPvfContent, { getIconBase64ByCode , getNameByCodeAndLst , parsePvfScriptToJson} from './pvf/services/getPvfContent';
 import getIconFrameBase64 from './pvf/services/getIconFrame';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -189,54 +189,49 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
         panel.onDidDispose(() => changeSub.dispose());
+        // === 通用 RPC Handler 映射（只在此处集中定义，与 UI 逻辑解耦） ===
+        const rpcHandlers: Record<string, (...a: any[]) => any | Promise<any>> = {
+            async getPvfContent(path: string) { return await getPvfContent(path); },
+            async getPvfJson(path: string) { return await parsePvfScriptToJson(path); },
+            async getIconFrame(path: string, frameIndex: number) { return await getIconFrameBase64(path, frameIndex); },
+            // webview 端调用顺序为 (lstPath, code)
+            async getNameByCodeAndLst(lstPath: string, code: number) { return await getNameByCodeAndLst(lstPath, code); },
+            async getIconBase64ByCode(lstPath: string, code: number) { return await getIconBase64ByCode(lstPath, code); }
+            // 后续新增方法仅需在此添加，无需再扩展 switch / case
+        };
+
         panel.webview.onDidReceiveMessage(async msg => {
             if (!msg || typeof msg !== 'object') return;
-            switch(msg.type){
-                case 'requestInit':
-                    panel.webview.postMessage({ type: 'init', data: init });
-                    break;
-                case 'applyEdit': {
-                    if (typeof msg.text === 'string') {
-                        const edit = new vscode.WorkspaceEdit();
-                        const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
-                        edit.replace(doc.uri, fullRange, msg.text);
-                        vscode.workspace.applyEdit(edit).then(ok => {
-                            if (ok) vscode.window.showInformationMessage('已写回文档'); else vscode.window.showWarningMessage('写回失败');
-                        });
-                    }
-                    break; }
-                case 'getPvfContent': {
-                    // Webview 请求 PVF 文件内容
-                    if (typeof msg.path === 'string' && msg.id) {
-                        try {
-                            const result = await getPvfContent(msg.path);
-                            panel.webview.postMessage({ type: 'pvfContent', id: msg.id, path: msg.path, result });
-                        } catch (err: any) {
-                            panel.webview.postMessage({ type: 'pvfContent', id: msg.id, path: msg.path, error: String(err && err.message || err) });
-                        }
-                    }
-                    break; }
-                case 'getPvfJsonContent': {
-                    // Webview 请求 PVF 脚本解析 JSON
-                    if (typeof msg.path === 'string' && msg.id) {
-                        try {
-                            const result = await parsePvfScriptToJson(msg.path);
-                            panel.webview.postMessage({ type: 'pvfJsonContent', id: msg.id, path: msg.path, result });
-                        } catch (err: any) {
-                            panel.webview.postMessage({ type: 'pvfJsonContent', id: msg.id, path: msg.path, error: String(err && err.message || err) });
-                        }
-                    }
-                    break; }
-                case 'getIconFrame': {
-                    if (typeof msg.path === 'string' && typeof msg.frameIndex === 'number' && msg.id) {
-                        try {
-                            const result = await getIconFrameBase64(msg.path, msg.frameIndex);
-                            panel.webview.postMessage({ type: 'iconFrame', id: msg.id, path: msg.path, frameIndex: msg.frameIndex, result });
-                        } catch (err:any) {
-                            panel.webview.postMessage({ type: 'iconFrame', id: msg.id, path: msg.path, frameIndex: msg.frameIndex, error: String(err && err.message || err) });
-                        }
-                    }
-                    break; }
+            // 兼容旧消息 & 通用 RPC
+            if (msg.type === 'requestInit') {
+                panel.webview.postMessage({ type: 'init', data: init });
+                return;
+            }
+            if (msg.type === 'applyEdit') {
+                if (typeof msg.text === 'string') {
+                    const edit = new vscode.WorkspaceEdit();
+                    const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+                    edit.replace(doc.uri, fullRange, msg.text);
+                    vscode.workspace.applyEdit(edit).then(ok => {
+                        if (ok) vscode.window.showInformationMessage('已写回文档'); else vscode.window.showWarningMessage('写回失败');
+                    });
+                }
+                return;
+            }
+            if (msg.type === 'rpc' && msg.id && typeof msg.method === 'string') {
+                const { id, method, params = [] } = msg as { id: string; method: string; params: any[] };
+                const fn = rpcHandlers[method];
+                if (!fn) {
+                    panel.webview.postMessage({ type: 'rpcResult', id, ok: false, error: `No such method: ${method}` });
+                    return;
+                }
+                try {
+                    const result = await Promise.resolve(fn(...params));
+                    panel.webview.postMessage({ type: 'rpcResult', id, ok: true, result });
+                } catch (err: any) {
+                    panel.webview.postMessage({ type: 'rpcResult', id, ok: false, error: String(err && err.message || err) });
+                }
+                return;
             }
         });
     }));

@@ -226,3 +226,153 @@ export async function parsePvfScriptToJson(filePath: string): Promise<ParseScrip
 	return { ok: true, nodes: root, text };
 }
 
+// ====== Name lookup helpers (code -> script path -> [name]) ======
+// 需求: 依据 lst 文件(plain .lst 文本: <code> `path`) + code 获取对应脚本中的 [name] 标签内容。
+// 约定: 若脚本存在 tag = 'name' 节点, 优先 tokens[0], 否则从 valueLines / inline 提取第一个反引号包裹或整行文本。
+
+export interface NameLookupResult {
+	ok: boolean;
+	code?: number;
+	lstPath?: string;
+	scriptPath?: string;
+	name?: string;
+	error?: string; // not_found / no_name / parse_error
+}
+
+// 简单内存缓存: lstPath -> Map<code, scriptPath>
+const _lstCache: Map<string, Map<number, string>> = new Map();
+// 已解析的脚本 name 缓存: scriptPath -> name | null(已解析但无 name)
+const _nameCache: Map<string, string | null> = new Map();
+
+function normalizeKey(p: string) { return p.replace(/\\/g,'/').replace(/^\/+/, '').toLowerCase(); }
+
+/** 解析脚本节点中的名称 */
+function extractNameFromNodes(nodes: ParsedScriptNode[]): string | undefined {
+	const nameNode = nodes.find(n => n.tag === 'name');
+	if (!nameNode) return undefined;
+	// tokens 优先
+	if (nameNode.tokens && nameNode.tokens.length) {
+		const raw = nameNode.tokens[0];
+		return raw.replace(/^`+|`+$/g,'').trim();
+	}
+	// 尝试 valueLines
+	if (nameNode.valueLines && nameNode.valueLines.length) {
+		for (const l of nameNode.valueLines) {
+			const m = l.match(/`([^`]+)`/); if (m) return m[1].trim();
+			if (l.trim()) return l.trim();
+		}
+	}
+	if (nameNode.inline) {
+		const m = nameNode.inline.match(/`([^`]+)`/); if (m) return m[1].trim();
+		return nameNode.inline.trim();
+	}
+	return undefined;
+}
+
+/**
+ * 给定脚本路径直接获取 [name] 内容
+ */
+export async function getNameByScriptPath(scriptPath: string): Promise<NameLookupResult> {
+	const sp = normalizeKey(scriptPath);
+	if (_nameCache.has(sp)) {
+		const cached = _nameCache.get(sp)!;
+		return cached ? { ok: true, scriptPath: sp, name: cached } : { ok: false, scriptPath: sp, error: 'no_name' };
+	}
+	try {
+		const parsed = await parsePvfScriptToJson(sp);
+		if (!parsed.ok) return { ok: false, scriptPath: sp, error: parsed.error || 'parse_error' };
+		const name = extractNameFromNodes(parsed.nodes);
+		_nameCache.set(sp, name ?? null);
+		return name ? { ok: true, scriptPath: sp, name } : { ok: false, scriptPath: sp, error: 'no_name' };
+	} catch (e:any) {
+		return { ok: false, scriptPath: sp, error: 'parse_error' };
+	}
+}
+
+/**
+ * 通过 lst 路径 + code 查询脚本名称。
+ * 若传入的 code 不存在，返回 not_found。
+ */
+export async function getNameByCodeAndLst(lstPath: string, code: number): Promise<NameLookupResult> {
+	const lp = normalizeKey(lstPath);
+	if (!_lstCache.has(lp)) {
+		// 构建缓存
+		const parsed = await parsePvfScriptToJson(lp);
+		if (!parsed.ok) return { ok: false, lstPath: lp, code, error: parsed.error || 'parse_error' };
+		const map = new Map<number, string>();
+		for (const e of parsed.lstEntries || []) { map.set(e.key, normalizeKey(e.value)); }
+		_lstCache.set(lp, map);
+	}
+	const m = _lstCache.get(lp)!;
+	const scriptPath = m.get(code);
+	if (!scriptPath) return { ok: false, lstPath: lp, code, error: 'not_found' };
+	const base = await getNameByScriptPath(scriptPath);
+	return { ...base, lstPath: lp, code, scriptPath };
+}
+
+/**
+ * 批量：按 lst + 多个 code 返回名称映射；未找到或无 name 的项不给出。
+ */
+export async function batchGetNamesByCodes(lstPath: string, codes: number[]): Promise<Record<number,string>> {
+	const out: Record<number,string> = {};
+	const lp = normalizeKey(lstPath);
+	for (const c of codes) {
+		const r = await getNameByCodeAndLst(lp, c);
+		if (r.ok && r.name) out[c] = r.name;
+	}
+	return out;
+}
+
+// ====== Icon lookup by lst + code ======
+export interface IconLookupResult { ok: boolean; code?: number; lstPath?: string; scriptPath?: string; base64?: string; error?: string; }
+
+// 缓存脚本解析出的 icon 元信息: scriptPath -> { path, frame }
+interface ScriptIconMeta { path: string; frame: number; }
+const _iconMetaCache: Map<string, ScriptIconMeta | null> = new Map();
+
+/** 尝试从脚本节点解析 icon 标签 (icon <imgPath> <frameIndex>) */
+function extractIconMeta(nodes: ParsedScriptNode[]): ScriptIconMeta | undefined {
+	const iconNode = nodes.find(n => n.tag === 'icon');
+	if (!iconNode) return undefined;
+	const toks = iconNode.tokens || [];
+	if (toks.length >= 1) {
+		const img = toks[0].replace(/`/g,'').trim();
+		const frame = toks.length >= 2 ? Number(toks[1]) : 0;
+		return { path: img, frame: Number.isFinite(frame)?frame:0 };
+	}
+	return undefined;
+}
+
+async function getIconMetaByScript(scriptPath: string): Promise<ScriptIconMeta | null> {
+	const sp = normalizeKey(scriptPath);
+	if (_iconMetaCache.has(sp)) return _iconMetaCache.get(sp)!;
+	try {
+		const parsed = await parsePvfScriptToJson(sp);
+		if (!parsed.ok) { _iconMetaCache.set(sp, null); return null; }
+		const meta = extractIconMeta(parsed.nodes) || null;
+		_iconMetaCache.set(sp, meta);
+		return meta;
+	} catch { _iconMetaCache.set(sp, null); return null; }
+}
+
+/** 给定 lst + code 返回脚本 icon 第 frame 帧的 base64 (自动解析 frame) */
+export async function getIconBase64ByCode(lstPath: string, code: number): Promise<IconLookupResult> {
+	const lp = normalizeKey(lstPath);
+	const map = (_lstCache.has(lp)) ? _lstCache.get(lp)! : (await (async()=>{ const p= await parsePvfScriptToJson(lp); if(!p.ok) return null; const m=new Map<number,string>(); for(const e of p.lstEntries||[]) m.set(e.key, normalizeKey(e.value)); _lstCache.set(lp,m); return m; })());
+	if (!map) return { ok:false, lstPath: lp, code, error:'lst_parse_error' };
+	const scriptPath = map.get(code);
+	if (!scriptPath) return { ok:false, lstPath: lp, code, error:'not_found' };
+	const meta = await getIconMetaByScript(scriptPath);
+	if (!meta) return { ok:false, lstPath: lp, code, scriptPath, error:'no_icon' };
+	try {
+		const { getIconFrameBase64 } = await import('./getIconFrame.js');
+		const res = await getIconFrameBase64(meta.path, meta.frame);
+		if (!res.ok) return { ok:false, lstPath: lp, code, scriptPath, error: res.error || 'icon_error' };
+		return { ok:true, lstPath: lp, code, scriptPath, base64: res.base64 };
+	} catch (e:any) {
+		return { ok:false, lstPath: lp, code, scriptPath, error:'exception' };
+	}
+}
+
+
+
