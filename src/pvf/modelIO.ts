@@ -42,7 +42,53 @@ export async function openImpl(this: any, filePath: string, progress?: any) {
     if (progress && i % 512 === 0) progress(Math.floor((i / fileCount) * 50));
   }
   if (progress) progress(50); // 确保文件列表阶段结束后显示 50%
-  this.baseOffset = pos; // remember where data section starts
+  this.baseOffset = pos; // data section start offset
+  // -------- 优化解密：批量读取数据区 + 切片解密 --------
+  const values: PvfFile[] = [...this.fileList.values()];
+  // 计算数据区总长度（按最大 offset + blockLength）
+  let dataSectionSize = 0;
+  for (const f of values) {
+    const end = f.offset + f.blockLength;
+    if (end > dataSectionSize) dataSectionSize = end;
+  }
+  const BULK_THRESHOLD = 1024 * 1024 * 1024; // 1GB 阈值，超出则回退逐块
+  let bulk: Buffer | null = null;
+  try {
+    if (dataSectionSize > 0 && dataSectionSize <= BULK_THRESHOLD) {
+      bulk = Buffer.allocUnsafe(dataSectionSize);
+      await fd.read({ buffer: bulk, position: this.baseOffset });
+    }
+  } catch {
+    bulk = null; // 回退
+  }
+  // 复用单一缓冲（逐块路径）以减少频繁 alloc
+  let reusableBuf: Buffer | null = null;
+  for (let i = 0; i < values.length; i++) {
+    const f: any = values[i];
+    if (f.dataLen > 0) {
+      try {
+        let encView: Uint8Array;
+        if (bulk) {
+          encView = new Uint8Array(bulk.buffer, bulk.byteOffset + f.offset, f.blockLength);
+        } else {
+          if (!reusableBuf || reusableBuf.length < f.blockLength) reusableBuf = Buffer.alloc(f.blockLength);
+          await fd.read({ buffer: reusableBuf, position: this.baseOffset + f.offset });
+          encView = new Uint8Array(reusableBuf.buffer, reusableBuf.byteOffset, f.blockLength);
+        }
+        // 直接调用加解密函数 (保持 C# 逻辑)；PvfFile.initFile 里再次 decrypt 会复制，所以改为手动流程以少一次 alloc
+        const dec = PvfCrypto.decrypt(encView, f.blockLength, f.checksum);
+        // zero padding (与 initFile 一致)
+        for (let z = 0; z < f.blockLength - f.dataLen; z++) dec[f.dataLen + z] = 0;
+        f.data = dec;
+      } catch (e) {
+        if (process.env.PVF_DEBUG_OPEN === '1') console.warn('[pvf open] decrypt fail', f.fileName, (e as any)?.message);
+        f.data = new Uint8Array(0);
+      }
+    } else {
+      f.data = new Uint8Array(0);
+    }
+    if (progress && i % 1024 === 0) progress(50 + Math.floor((i / values.length) * 20));
+  }
   await fd.close();
 
   // reset lazy caches
