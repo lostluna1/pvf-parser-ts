@@ -40,7 +40,8 @@ const useStyles = makeStyles({
         position: 'relative',
         display: 'flex', flexDirection: 'column', height: '100%', width: '100%',
         background: 'var(--vscode-editor-background)',
-        fontFamily: '"Microsoft YaHei","微软雅黑","Segoe UI",Arial'
+        fontFamily: '"Microsoft YaHei","微软雅黑","Segoe UI",Arial',
+        overflow: 'hidden' // 由内部 tabContent 负责滚动
     },
     topPanelShell: {
         position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 10, pointerEvents: 'none'
@@ -94,6 +95,7 @@ const useStyles = makeStyles({
     ,equipmentBadges: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px' }
     ,equipmentBadge: { background: '#2a2a2a', border: '1px solid #444', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', lineHeight: '12px' }
     ,equipmentId: { position: 'absolute', top: '4px', right: '6px', fontSize: '10px', opacity: .45 }
+    ,tabContent: { flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }
 });
 
 interface SkillInfo { id: number; skillName?: string; iconBase64?: string; level?: number }
@@ -266,103 +268,105 @@ const App: React.FC<{ init: InitData }> = ({ init }) => {
                     </TabList>
                 </div>
             )}
-            {parseResult && activeTab === 'skills' && (
-                <>
-                    <div className={styles.quickSlots}>
-                        {Array.from({ length: MAX_SLOTS }).map((_, i) => {
-                            const sk = quickSkills[i];
-                            if (sk) {
+            <div className={styles.tabContent}>
+                {parseResult && activeTab === 'skills' && (
+                    <>
+                        <div className={styles.quickSlots}>
+                            {Array.from({ length: MAX_SLOTS }).map((_, i) => {
+                                const sk = quickSkills[i];
+                                if (sk) {
+                                    return (
+                                        <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                            <div className={styles.quickSlot}
+                                                onMouseEnter={() => setHoverSlot(i)}
+                                                onMouseLeave={() => setHoverSlot(h => (h === i ? null : h))}
+                                                onClick={() => removeQuickAt(i)}
+                                                title={(sk.skillName || '') + ' (点击移除)'}>
+                                                {sk.iconBase64 && <img className={styles.skillImg} src={`data:image/png;base64,${sk.iconBase64}`} />}
+                                                <span className={styles.levelBadge}>{sk.level}</span>
+                                                {hoverSlot === i && <div className={styles.removeMask}>移除</div>}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 4 }}>
+                                                <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={(e) => { e.stopPropagation(); adjustQuickLevel(i, -1); }}>-</Button>
+                                                <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={(e) => { e.stopPropagation(); adjustQuickLevel(i, +1); }}>+</Button>
+                                            </div>
+                                        </div>
+                                    );
+                                }
                                 return (
-                                    <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                                        <div className={styles.quickSlot}
-                                            onMouseEnter={() => setHoverSlot(i)}
-                                            onMouseLeave={() => setHoverSlot(h => (h === i ? null : h))}
-                                            onClick={() => removeQuickAt(i)}
-                                            title={(sk.skillName || '') + ' (点击移除)'}>
-                                            {sk.iconBase64 && <img className={styles.skillImg} src={`data:image/png;base64,${sk.iconBase64}`} />}
-                                            <span className={styles.levelBadge}>{sk.level}</span>
-                                            {hoverSlot === i && <div className={styles.removeMask}>移除</div>}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 4 }}>
-                                            <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={(e) => { e.stopPropagation(); adjustQuickLevel(i, -1); }}>-</Button>
-                                            <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={(e) => { e.stopPropagation(); adjustQuickLevel(i, +1); }}>+</Button>
-                                        </div>
+                                    <div key={i} className={styles.quickSlot + ' ' + styles.quickSlotEmpty}
+                                        onClick={() => setDialogOpen(true)}
+                                        title='添加技能'>
+                                        <span className={styles.quickPlus}>+</span>
                                     </div>
                                 );
-                            }
-                            return (
-                                <div key={i} className={styles.quickSlot + ' ' + styles.quickSlotEmpty}
-                                    onClick={() => setDialogOpen(true)}
-                                    title='添加技能'>
-                                    <span className={styles.quickPlus}>+</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div style={{ padding: '0 12px 4px 12px', fontSize: 12, opacity: .6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>已掌握技能（不含快捷栏）</span>
-                        <Button size='small' appearance='subtle' onClick={() => { setDialogMode('learned'); setDialogOpen(true); }}>添加</Button>
-                    </div>
-                    <div className={styles.learnedGrid}>
-                        {displayLearned.map(s => (
-                            <div key={s.id} className={styles.learnedItem} title={(s.skillName || '') + ' (点击移除)'}
-                                onMouseEnter={() => setHoverLearnedId(s.id)}
-                                onMouseLeave={() => setHoverLearnedId(h => h === s.id ? null : h)}
-                                >
-                                <div className={styles.learnedIconBox} onClick={() => removeLearnedSkill(s.id)}>
-                                    {s.iconBase64 && <img className={styles.skillImg} src={`data:image/png;base64,${s.iconBase64}`} />}
-                                    {s.level != null && <span className={styles.learnedLevel}>{s.level}</span>}
-                                    {hoverLearnedId === s.id && <div className={styles.learnedRemoveMask}>移除</div>}
-                                </div>
-                                <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
-                                    <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={() => adjustLearnedLevel(s.id, -1)}>-</Button>
-                                    <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={() => adjustLearnedLevel(s.id, +1)}>+</Button>
-                                </div>
-                                <span style={{ textAlign: 'center' }}>{(s.skillName || '').slice(0, 6)}</span>
-                            </div>
-                        ))}
-                        <div key='add-tile' className={styles.learnedItem} title='添加技能'>
-                            <div className={styles.learnedIconBox} style={{ border: '1px dashed #444', background: '#151515', cursor: 'pointer' }}
-                                onClick={() => { setDialogMode('learned'); setDialogOpen(true); }}>
-                                <span style={{ fontSize: 26, color: '#555' }}>+</span>
-                            </div>
-                            <span style={{ textAlign: 'center', opacity: .5 }}>添加</span>
+                            })}
                         </div>
-                        {displayLearned.length === 0 && <div style={{ fontSize: 12, opacity: .5 }}>无其它技能</div>}
-                    </div>
-                </>
-            )}
-            {parseResult && activeTab === 'equip' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ padding: '12px 12px 0 12px', fontSize: 12, opacity: .6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>装备列表 ({parseResult.equipments?.length || 0})</span>
-                        {/* 预留未来的过滤 / 搜索栏位 */}
-                    </div>
-                    {(parseResult.equipments && parseResult.equipments.length > 0) ? (
-                        <div className={styles.equipmentGrid}>
-                            {parseResult.equipments.map(eq => (
-                                <div key={eq.id} className={styles.equipmentCard} title={(eq.name || '') + ' #' + eq.id}>
-                                    <span className={styles.equipmentId}>#{eq.id}</span>
-                                    <div className={styles.equipmentIconBox}>
-                                        {eq.iconBase64 ? (
-                                            <img className={styles.equipmentIcon} src={`data:image/png;base64,${eq.iconBase64}`} />
-                                        ) : (
-                                            <span style={{ fontSize: 10, opacity: .4 }}>无图标</span>
-                                        )}
+                        <div style={{ padding: '0 12px 4px 12px', fontSize: 12, opacity: .6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span>已掌握技能（不含快捷栏）</span>
+                            <Button size='small' appearance='subtle' onClick={() => { setDialogMode('learned'); setDialogOpen(true); }}>添加</Button>
+                        </div>
+                        <div className={styles.learnedGrid}>
+                            {displayLearned.map(s => (
+                                <div key={s.id} className={styles.learnedItem} title={(s.skillName || '') + ' (点击移除)'}
+                                    onMouseEnter={() => setHoverLearnedId(s.id)}
+                                    onMouseLeave={() => setHoverLearnedId(h => h === s.id ? null : h)}
+                                    >
+                                    <div className={styles.learnedIconBox} onClick={() => removeLearnedSkill(s.id)}>
+                                        {s.iconBase64 && <img className={styles.skillImg} src={`data:image/png;base64,${s.iconBase64}`} />}
+                                        {s.level != null && <span className={styles.learnedLevel}>{s.level}</span>}
+                                        {hoverLearnedId === s.id && <div className={styles.learnedRemoveMask}>移除</div>}
                                     </div>
-                                    <div className={styles.equipmentName}>{eq.name || '未知名称'}</div>
-                                    <div className={styles.equipmentBadges}>
-                                        <span className={styles.equipmentBadge}>{eq.gradeName || '等级' + (eq.grade ?? '')}</span>
-                                        {typeof eq.powerUpLevel === 'number' && <span className={styles.equipmentBadge}>+{eq.powerUpLevel}</span>}
+                                    <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                                        <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={() => adjustLearnedLevel(s.id, -1)}>-</Button>
+                                        <Button size='small' appearance='outline' style={{ minWidth: 20, padding: '0 4px', height: 22 }} onClick={() => adjustLearnedLevel(s.id, +1)}>+</Button>
                                     </div>
+                                    <span style={{ textAlign: 'center' }}>{(s.skillName || '').slice(0, 6)}</span>
                                 </div>
                             ))}
+                            <div key='add-tile' className={styles.learnedItem} title='添加技能'>
+                                <div className={styles.learnedIconBox} style={{ border: '1px dashed #444', background: '#151515', cursor: 'pointer' }}
+                                    onClick={() => { setDialogMode('learned'); setDialogOpen(true); }}>
+                                    <span style={{ fontSize: 26, color: '#555' }}>+</span>
+                                </div>
+                                <span style={{ textAlign: 'center', opacity: .5 }}>添加</span>
+                            </div>
+                            {displayLearned.length === 0 && <div style={{ fontSize: 12, opacity: .5 }}>无其它技能</div>}
                         </div>
-                    ) : (
-                        <div style={{ padding: '24px 12px', fontSize: 12, opacity: .5 }}>暂无装备数据</div>
-                    )}
-                </div>
-            )}
+                    </>
+                )}
+                {parseResult && activeTab === 'equip' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ padding: '12px 12px 0 12px', fontSize: 12, opacity: .6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>装备列表 ({parseResult.equipments?.length || 0})</span>
+                            {/* 预留未来的过滤 / 搜索栏位 */}
+                        </div>
+                        {(parseResult.equipments && parseResult.equipments.length > 0) ? (
+                            <div className={styles.equipmentGrid}>
+                                {parseResult.equipments.map(eq => (
+                                    <div key={eq.id} className={styles.equipmentCard} title={(eq.name || '') + ' #' + eq.id}>
+                                        <span className={styles.equipmentId}>#{eq.id}</span>
+                                        <div className={styles.equipmentIconBox}>
+                                            {eq.iconBase64 ? (
+                                                <img className={styles.equipmentIcon} src={`data:image/png;base64,${eq.iconBase64}`} />
+                                            ) : (
+                                                <span style={{ fontSize: 10, opacity: .4 }}>无图标</span>
+                                            )}
+                                        </div>
+                                        <div className={styles.equipmentName}>{eq.name || '未知名称'}</div>
+                                        <div className={styles.equipmentBadges}>
+                                            <span className={styles.equipmentBadge}>{eq.gradeName || '等级' + (eq.grade ?? '')}</span>
+                                            {typeof eq.powerUpLevel === 'number' && <span className={styles.equipmentBadge}>+{eq.powerUpLevel}</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div style={{ padding: '24px 12px', fontSize: 12, opacity: .5 }}>暂无装备数据</div>
+                        )}
+                    </div>
+                )}
+            </div>
             <Dialog open={dialogOpen} onOpenChange={(_, data) => setDialogOpen(!!data.open)} modalType="non-modal">
                 <DialogSurface>
                     <DialogBody>

@@ -73,8 +73,9 @@ export async function parseAic(text: string): Promise<AicParseResult> { // 增�
 		// console.log('[APC] fetched JSON for', normPath, currentJson);
 		result.nodes = currentJson?.nodes || [];
 	}
-	var chrIndex = result?.nodes?.[0]?.numbers?.[0] ?? 0;
-	var growType = result?.nodes?.[0]?.numbers?.[1] ?? 0;
+	var chrIndex = result?.nodes?.find(t => t.tag === 'minimum info')?.numbers?.[0] ?? 0;
+	var growType = result?.nodes?.find(t => t.tag === 'minimum info')?.numbers?.[1] ?? 0;
+	console.log(result?.nodes,"result?.nodes")
 	// 1. 读取 character/character.lst (返回 lstEntries: {key,value})
 	const chrListJson = await pvfApi.getJson('character/character.lst');
 	const chrEntry = chrListJson?.lstEntries?.find((e: any) => e.key === chrIndex);
@@ -83,6 +84,7 @@ export async function parseAic(text: string): Promise<AicParseResult> { // 增�
 		// 2. 读取对应职业 .chr 脚本，解析为节点数组
 		const chrPath = chrEntry.value.toLowerCase();
 		const jobJson = await pvfApi.getJson(chrPath);
+		console.log('[APC] jobJson', jobJson);
 		// 3. 找到 tag == 'growtype name' 的节点
 		const growNode = (jobJson?.nodes || []).find((n: any) => n.tag === 'growtype name');
 		if (growNode?.valueLines?.length) {
@@ -96,7 +98,7 @@ export async function parseAic(text: string): Promise<AicParseResult> { // 增�
 		} else {
 			console.warn('[APC] growtype name node not found or empty in', chrPath);
 		}
-		result.jobAllSkills = await getAllSkillsJob(jobJson?.nodes || []);
+		result.jobAllSkills = await getAllSkillsJob(result?.nodes || []);
 		result.quickSkills = await getQuickSkills(result.nodes || [], result.jobAllSkills || []);
 		result.skills = await getOwnedSkills(result.nodes || [], result.jobAllSkills || []);
 		result.equipments = await getEquipmentInfo(result.nodes || []);
@@ -109,7 +111,7 @@ export async function parseAic(text: string): Promise<AicParseResult> { // 增�
 async function getAllSkillsJob(nodes: any[]): Promise<SkillInfo[]> {
 	var sklListPath = 'skill/skilllist.lst';
 	var skillInfos: SkillInfo[] = [];
-	var chrIndex = nodes?.[0]?.numbers?.[0] ?? 0;
+	var chrIndex = nodes?.find(t => t.tag === 'minimum info')?.numbers?.[0] ?? 0;
 	// 读取 skilllist.lst，找到对应技能名称
 	var sklPaths = '';
 	var sklListJson = await pvfApi.getJson(sklListPath);

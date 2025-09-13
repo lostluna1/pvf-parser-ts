@@ -725,6 +725,36 @@ export class PvfModel {
     }
   }
 
+  // ===== LST 代码检索辅助访问器 =====
+  /** 返回当前已解析的所有带代码映射的脚本文件数量 */
+  public getLstCodeEntryCount(): number { return this.fileCodeMap.size; }
+  /** 获取所有参与 lst 代码映射的 .lst 文件基路径集合（通过逆向推导：扫描所有 .lst，再判断是否在映射中出现其前缀）。 */
+  public getAllLstFilesWithCodes(): string[] {
+    const bases = new Set<string>();
+    for (const key of this.fileList.keys()) if (key.endsWith('.lst')) bases.add(key);
+    return Array.from(bases).sort();
+  }
+  /** 根据 lst 文件路径与一组代码，返回匹配到的脚本文件 key -> code 列表 (只返回存在的) */
+  public getFilesByCodesForLst(lstPath: string, codes: number[]): { key: string; code: number }[] {
+    // lstPath 用于限定前缀：lst 所在目录 + displayName == fileKey
+    const lower = lstPath.toLowerCase();
+    const idx = lower.lastIndexOf('/');
+    const baseDir = idx >= 0 ? lower.substring(0, idx + 1) : '';
+    const want = new Set<number>(codes);
+    const out: { key: string; code: number }[] = [];
+    for (const [fileKey, code] of this.fileCodeMap.entries()) {
+      if (!fileKey.startsWith(baseDir)) continue;
+      if (want.has(code)) out.push({ key: fileKey, code });
+    }
+    return out;
+  }
+  /** 直接获取所有 (fileKey -> code) 快照 */
+  public getCodeMapSnapshot(): Array<{ key: string; code: number; display?: string }> {
+    const arr: Array<{ key: string; code: number; display?: string }> = [];
+    for (const [k, c] of this.fileCodeMap.entries()) arr.push({ key: k, code: c, display: this.fileDisplayNameMap.get(k) });
+    return arr;
+  }
+
   // Find references to a file key or base filename across script/stringtable/text/.ani files
   public async findReferences(key: string): Promise<string[]> {
     const result: string[] = [];
