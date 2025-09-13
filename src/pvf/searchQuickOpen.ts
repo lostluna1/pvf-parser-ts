@@ -33,7 +33,7 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
     if (!index) { vscode.window.showErrorMessage('索引尚未构建'); return; }
 
     const qp = vscode.window.createQuickPick<QuickPickItem>();
-    qp.placeholder = '搜索: 文件路径 | @字符串引用 | #代码(.lst)';
+    qp.placeholder = '搜索: 默认搜索文件路径 | @开头搜索字符串引用 | #开头搜索物品代码(.lst)';
     qp.matchOnDescription = false; // 我们自己做过滤
     qp.matchOnDetail = true; // 允许用户输入包含目录的路径直接匹配 detail
     qp.canSelectMany = false;
