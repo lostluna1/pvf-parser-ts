@@ -13,6 +13,7 @@ import { registerSearchInPack } from './pvf/searchQuickOpen';
 import { setPvfModel } from './pvf/runtimeModel';
 import getPvfContent, { getIconBase64ByCode , getNameByCodeAndLst , parsePvfScriptToJson} from './pvf/services/getPvfContent';
 import getIconFrameBase64 from './pvf/services/getIconFrame';
+import { registerStringTableCodeLens } from './pvf/services/stringTableCodeLens';
 
 export function activate(context: vscode.ExtensionContext) {
     const model = new PvfModel();
@@ -163,6 +164,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 注册脚本语言特性 (.act 等)
     registerScriptLanguages(context, model);
+
+    // 注册 stringtable.bin CodeLens （按需构建字符串引用索引）
+    registerStringTableCodeLens(context, model);
 
     // AIC Editor (APC 预览编辑) 命令
     context.subscriptions.push(vscode.commands.registerCommand('pvf.openAicEditor', async () => {

@@ -7,6 +7,23 @@ import { PvfFile } from './pvfFile';
 // Note: typed as any to avoid circular type import
 export async function openImpl(this: any, filePath: string, progress?: any) {
   this.pvfPath = filePath;
+  // ---- Reset caches from previous pack to avoid stale data leakage between opens ----
+  try {
+    if (this.fileList && this.fileList.clear) this.fileList.clear(); // will be repopulated
+    if (this.childrenCache?.clear) this.childrenCache.clear();
+    this.rootChildren = null;
+    this.encodingCache?.clear?.();
+    this.fileCodeMap?.clear?.();
+    this.fileDisplayNameMap?.clear?.();
+    this.originalTextMeta?.clear?.();
+    this.originalAlsBytes?.clear?.();
+    // string resources: ensure absence in new pack does not reuse old ones
+    this.strtable = undefined;
+    this.strview = undefined;
+    this.guid = Buffer.alloc(0);
+    this.guidLen = 0;
+    this.fileVersion = 0;
+  } catch { /* swallow reset errors */ }
   const fd = await fs.open(filePath, 'r');
   let pos = 0;
   const readBuf = async (len: number) => {

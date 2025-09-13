@@ -110,3 +110,48 @@ export async function searchStringReferencesAsync(model: PvfModel, keywordRaw: s
   progress?.({ phase: 'done', processed: keys.length, total: keys.length });
   return { keyword: keywordRaw, matches: matches.sort((a, b) => a.key.localeCompare(b.key)), elapsed: Date.now() - t0 };
 }
+
+// New: batch search by explicit string IDs (base only) used by CodeLens
+export async function searchStringIdReferencesAsync(model: PvfModel, ids: number[], yieldEvery = 400): Promise<Map<number, string[]>> {
+  const out = new Map<number, string[]>();
+  if (ids.length === 0) return out;
+  const idSet = new Set(ids.map(v => v >>> 0));
+  const fileMap: Map<string, PvfFile> = (model as any).fileList;
+  const keys = model.getAllKeys();
+  // Ensure required scripts are loaded
+  for (let kIdx = 0; kIdx < keys.length; kIdx++) {
+    const key = keys[kIdx];
+    const f = fileMap.get(key);
+    if (!f) continue;
+    if (!f.data) {
+      try { await (model as any).loadFileData?.(f); } catch { continue; }
+    }
+    if (!f.data || !f.isScriptFile) continue;
+    const data = f.data;
+    const limit = f.dataLen - 4;
+    let hitIds: number[] | null = null;
+    for (let i = 2; i < limit; i += 5) {
+      const flag = data[i];
+      if (flag === 5 || flag === 7 || flag === 10) {
+        const v = (data[i + 1]) | (data[i + 2] << 8) | (data[i + 3] << 16) | (data[i + 4] << 24);
+        const vv = v >>> 0;
+        if (idSet.has(vv)) {
+          if (!hitIds) hitIds = [];
+            if (hitIds.indexOf(vv) === -1) hitIds.push(vv);
+        }
+      }
+      // composite 暂不扫描（只按 base ID）
+    }
+    if (hitIds) {
+      for (const sid of hitIds) {
+        let arr = out.get(sid);
+        if (!arr) out.set(sid, arr = []);
+        arr.push(key);
+      }
+    }
+    if (kIdx % yieldEvery === 0) await Promise.resolve();
+  }
+  // sort arrays for deterministic output
+  out.forEach((arr, k) => arr.sort());
+  return out;
+}
