@@ -14,14 +14,22 @@ export interface StringRefResult {
   elapsed: number;
 }
 
+export interface StringRefProgress {
+  phase: 'prepare' | 'scan' | 'done';
+  processed?: number;
+  total?: number;
+}
+
+
 /**
  * 搜索脚本里引用到的 stringtable / stringview 文本。
  * @param model PVF 模型
  * @param keywordRaw 原始查询字符串
  * @returns 匹配结果或 null（无 stringtable）
  */
-export function searchStringReferences(model: PvfModel, keywordRaw: string): StringRefResult | null {
+export async function searchStringReferencesAsync(model: PvfModel, keywordRaw: string, progress?: (p: StringRefProgress) => void, yieldEvery = 300): Promise<StringRefResult | null> {
   const t0 = Date.now();
+  progress?.({ phase: 'prepare' });
   const st: StringTable | undefined = (model as any).strtable;
   if (!st) return null;
   const list: string[] = (st as any).list || [];
@@ -54,7 +62,9 @@ export function searchStringReferences(model: PvfModel, keywordRaw: string): Str
   if (nums.size === 0) return { keyword: keywordRaw, matches: [], elapsed: Date.now() - t0 };
 
   const fileMap: Map<string, PvfFile> = (model as any).fileList;
+  const keys = model.getAllKeys();
   const matches: StringRefMatch[] = [];
+  progress?.({ phase: 'scan', processed: 0, total: keys.length });
 
   const extractLabels = (f: PvfFile): string[] => {
     if (!f.data) return [];
@@ -73,7 +83,7 @@ export function searchStringReferences(model: PvfModel, keywordRaw: string): Str
         const composite = ((cat << 24) >>> 0) + (lo >>> 0);
         if (nums.has(composite >>> 0)) {
           const cv = compositeValueMap.get(composite >>> 0);
-            if (cv && out.indexOf(cv) === -1) out.push(cv);
+          if (cv && out.indexOf(cv) === -1) out.push(cv);
         }
       }
       if (out.length >= 4) break;
@@ -81,16 +91,22 @@ export function searchStringReferences(model: PvfModel, keywordRaw: string): Str
     return out;
   };
 
-  for (const key of model.getAllKeys()) {
+  for (let idx = 0; idx < keys.length; idx++) {
+    const key = keys[idx];
     const f: PvfFile | undefined = fileMap.get(key);
-    if (!f || !f.data || !f.isScriptFile) continue;
-    try {
-      if (f.searchString(nums)) {
-        const labels = extractLabels(f);
-        matches.push({ key, labels });
-      }
-    } catch { /* ignore */ }
+    if (f && f.data && f.isScriptFile) {
+      try {
+        if (f.searchString(nums)) {
+          const labels = extractLabels(f);
+          matches.push({ key, labels });
+        }
+      } catch { /* ignore */ }
+    }
+    if (idx % yieldEvery === 0) {
+      progress?.({ phase: 'scan', processed: idx + 1, total: keys.length });
+      await Promise.resolve(); // 让步
+    }
   }
-
+  progress?.({ phase: 'done', processed: keys.length, total: keys.length });
   return { keyword: keywordRaw, matches: matches.sort((a, b) => a.key.localeCompare(b.key)), elapsed: Date.now() - t0 };
 }

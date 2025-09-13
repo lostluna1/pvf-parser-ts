@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import { PvfModel } from './model';
 import { StringTable } from './stringTable'; // 保留用于类型提示（服务内部已使用）
 // 拆分后的搜索服务
-import { ensureFileIndex, takeFirstEntries, rankFileMatches, FileIndexEntry } from './services/fileSearchService';
-import { ensureCodeIndex, searchCodes } from './services/codeSearchService';
-import { searchStringReferences } from './services/stringRefSearchService';
+import { ensureFileIndexAsync, getIndexedFirst, rankFileMatchesAsync, FileIndexEntry } from './services/fileSearchService';
+import { searchCodesAsync } from './services/codeSearchService';
+import { searchStringReferencesAsync } from './services/stringRefSearchService';
 // 统一搜索入口: 普通文件路径 / @字符串引用(含链接) / #代码 -> 文件（来自 .lst 映射）
 
 interface QuickPickItem extends vscode.QuickPickItem { key: string; }
@@ -23,119 +23,94 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
       return;
     }
 
-    // 懒构建文件索引（由服务维护）
-    let index = ensureFileIndex(model);
-    if (!index) {
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: '构建搜索索引…' }, async () => {
-        index = ensureFileIndex(model);
+    // 懒构建文件索引（异步）
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: '构建文件索引…' }, async () => {
+      await ensureFileIndexAsync(model, p => {
+        if (p.phase === 'index' && p.total) {
+          // 进度条由 VS Code 控制，这里仅可选更新窗口标题（暂省略以减少刷新）
+        }
       });
-    }
-    if (!index) { vscode.window.showErrorMessage('索引尚未构建'); return; }
+    });
 
     const qp = vscode.window.createQuickPick<QuickPickItem>();
     qp.placeholder = '搜索: 默认搜索文件路径 | @开头搜索字符串引用 | #开头搜索物品代码(.lst)';
-    qp.matchOnDescription = false; // 我们自己做过滤
-    qp.matchOnDetail = true; // 允许用户输入包含目录的路径直接匹配 detail
+  qp.matchOnDescription = false; // 禁止内置描述过滤
+  qp.matchOnDetail = false; // 关闭 detail 过滤，防止用户认为已触发搜索
     qp.canSelectMany = false;
 
-    // 初始：展示前 200
-    qp.items = takeFirstEntries(200).map(toItem);
+  // 初始：仅显示占位提示，不预填文件，避免用户误解为实时搜索
+  qp.items = [ { key: '__placeholder__', label: '输入后按 Enter 执行搜索 (支持 文件 / @字符串 / #代码)', alwaysShow: true } ];
+  qp.title = '输入后按回车开始搜索';
 
     let disposed = false;
     qp.onDidHide(() => { if (!disposed) qp.dispose(); disposed = true; });
 
-    let debounceTimer: NodeJS.Timeout | null = null;
-    let lastQuery = '';
+    // 状态管理
+    let phase: 'idle' | 'results' = 'idle';
+    let currentType: 'file' | 'string' | 'code' | null = null;
+    let lastQuery: string | null = null;
+    let searching = false; // 防止重复触发
 
-    let atResults = false; // 当前条目为一次 @ 搜索结果
-    let lastAtQuery: string | null = null;
-    // # 代码搜索索引保证按需构建（服务内部）
-
-    const run = (value: string) => {
-      const rawQ = value.trim();
-      if (rawQ === lastQuery) return;
-      lastQuery = rawQ;
-      if (!rawQ) {
-        qp.items = takeFirstEntries(400).map(toItem);
-        qp.title = undefined;
-        atResults = false;
-        // 清空 # 状态无需额外
-        return;
+    // 用户修改输入后，若已处于结果阶段则回到 idle
+    const updatePlaceholder = () => {
+      const raw = qp.value.trim();
+      let label: string;
+      if (raw.startsWith('@')) {
+        label = raw.length > 1 ? `按 Enter 搜索字符串: ${raw.slice(1)}` : '输入 @关键字 后按 Enter 搜索字符串';
+      } else if (raw.startsWith('#')) {
+        label = raw.length > 1 ? `按 Enter 搜索代码: ${raw.slice(1)}` : '输入 #代码(可多条) 后按 Enter 搜索代码';
+      } else if (raw.length === 0) {
+        label = '输入后按 Enter 执行搜索 (支持 文件 / @字符串 / #代码)';
+      } else {
+        label = `按 Enter 搜索文件名: ${raw}`;
       }
-      // # 全局代码搜索 (跨全部 lst) 语法: #code1 code2 ... 或多行/逗号/分号分隔
-      if (rawQ.startsWith('#')) {
-        const codesRaw = rawQ.slice(1).trim();
-        if (!codesRaw) { qp.title = '# 输入代码 (空格/换行/逗号分隔)'; qp.items = []; return; }
-        const { items: codeItems, matchedKeys } = searchCodes(codesRaw, model, 800);
-        const qpItems: QuickPickItem[] = codeItems.map(ci => {
-          const fk = ci.fileKey;
-          const base = fk.split('/').pop() || fk;
-          const display = (model as any).getDisplayNameForFile ? (model as any).getDisplayNameForFile(fk) : undefined;
-          const label = display || base;
-          const descParts: string[] = [];
-          if (display && display !== base) descParts.push(base);
-          descParts.push('code=' + ci.code);
-          return { key: fk, label, description: descParts.join('  '), detail: fk, alwaysShow: true } as QuickPickItem;
-        });
-        qp.items = qpItems;
-        qp.title = `# 代码结果: ${qpItems.length}`;
-        // 与原逻辑一致：异步补全 displayName
-        (async () => {
-          try {
-            await (model as any).ensureMetadataForFiles?.(matchedKeys);
-            let changed = false;
-            const refreshed = qpItems.map(it => {
-              const baseName = it.key.split('/').pop() || it.key;
-              const disp = (model as any).getDisplayNameForFile ? (model as any).getDisplayNameForFile(it.key) : undefined;
-              if (disp && disp !== it.label) {
-                changed = true;
-                const codePart = (it.description || '').split(/\s{2,}|\s/).find(p => p.startsWith('code=')) || (it.description || '');
-                const descParts: string[] = [];
-                if (disp !== baseName) descParts.push(baseName);
-                if (codePart) descParts.push(codePart);
-                return { ...it, label: disp, description: descParts.join('  ') } as QuickPickItem;
-              }
-              return it;
-            });
-            if (changed) qp.items = refreshed;
-          } catch { /* ignore */ }
-        })();
-        return;
-      }
-      const token = rawQ.toLowerCase();
-      const ranked = rankFileMatches(token, 8000, 600);
-      qp.items = ranked.map(toItem);
-      qp.title = `候选: ${ranked.length}${ranked.length >= 600 ? '+' : ''}`;
+      qp.items = [ { key: '__placeholder__', label, alwaysShow: true } ];
     };
 
-    const schedule = (val: string) => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => run(val), 70); // 60~80ms 手感较好
-    };
-
-    qp.onDidChangeValue(v => schedule(v));
+    qp.onDidChangeValue(() => {
+      if (phase === 'results') { // 修改输入后退出结果阶段
+        phase = 'idle'; currentType = null; lastQuery = null;
+        qp.title = '输入后按回车开始搜索';
+      }
+      if (!searching) updatePlaceholder();
+    });
 
     qp.onDidAccept(async () => {
-      const value = qp.value.trim();
-      // @ 前缀：脚本字符串引用搜索（委托给服务）
-      if (value.startsWith('@')) {
-        // 若已经是结果阶段，再次回车则尝试打开选中条目
-        if (atResults) {
-          const sel2 = qp.selectedItems[0];
-          if (sel2) {
-            qp.hide();
-            const uri2 = vscode.Uri.parse(`pvf:/${sel2.key}`);
-            try { await vscode.window.showTextDocument(uri2, { preview: true }); } catch (e) { vscode.window.showErrorMessage('打开文件失败: ' + (e as any)?.message); }
-          }
-          return;
-        }
-        const keywordRaw = value.slice(1).trim();
-        if (!keywordRaw) { vscode.window.showInformationMessage('请输入关键字'); return; }
-        qp.busy = true;
-        const t0 = Date.now();
-        try {
-          const res = searchStringReferences(model, keywordRaw);
-          if (!res || res.matches.length === 0) { vscode.window.showInformationMessage('未找到匹配的字符串 (stringtable)'); return; }
+      if (searching) return; // 正在搜索，忽略
+      const raw = qp.value.trim();
+      if (!raw) { return; }
+
+      // 判定类型
+      const type: 'file' | 'string' | 'code' = raw.startsWith('@') ? 'string' : raw.startsWith('#') ? 'code' : 'file';
+
+      // 结果阶段：再次回车 = 打开文件
+      if (phase === 'results' && type === currentType) {
+        const sel = qp.selectedItems[0];
+        if (!sel) return;
+        qp.hide();
+        const uri = vscode.Uri.parse(`pvf:/${sel.key}`);
+        try { await vscode.window.showTextDocument(uri, { preview: true }); }
+        catch (e) { vscode.window.showErrorMessage('打开文件失败: ' + (e as any)?.message); }
+        return;
+      }
+
+  // 进入搜索阶段（先设置 busy，再让出事件循环确保进度条显示）
+  searching = true; qp.busy = true; qp.title = '搜索中…';
+  await new Promise(resolve => setTimeout(resolve, 0));
+      try {
+        if (type === 'string') {
+          const keyword = raw.slice(1).trim();
+          if (!keyword) { vscode.window.showInformationMessage('请输入关键字'); return; }
+          const res = await searchStringReferencesAsync(model, keyword, p => {
+            if (p.phase === 'scan') {
+              if (p.total && p.processed) {
+                qp.title = `@${keyword} 扫描中… (${p.processed}/${p.total})`;
+              } else {
+                qp.title = `@${keyword} 扫描中…`;
+              }
+            }
+          });
+          if (!res || res.matches.length === 0) { qp.items = []; qp.title = `@${keyword} 无结果`; phase = 'idle'; currentType = null; return; }
           const items: QuickPickItem[] = res.matches.map(m => {
             const base = m.key.split('/').pop() || m.key;
             const labelPrimary = m.labels[0] || base;
@@ -148,41 +123,63 @@ export function registerSearchInPack(context: vscode.ExtensionContext, model: Pv
             }
             return { key: m.key, label: labelPrimary, description, detail: m.key, alwaysShow: true } as QuickPickItem;
           });
-          qp.items = items;
-          qp.title = `@${keywordRaw} 结果: ${res.matches.length} (耗时 ${res.elapsed}ms)`;
-          atResults = true; lastAtQuery = keywordRaw;
-        } finally { qp.busy = false; }
-        return; // 保持 QuickPick 打开
-      }
-      // # 代码检索：直接结果列表，按 Enter 打开所选（无需阶段切换）
-      if (value.startsWith('#')) {
-        const selHash = qp.selectedItems[0];
-        if (selHash) {
-          qp.hide();
-          const uri = vscode.Uri.parse(`pvf:/${selHash.key}`);
-          try { await vscode.window.showTextDocument(uri, { preview: true }); } catch (e) { vscode.window.showErrorMessage('打开文件失败: ' + (e as any)?.message); }
+          qp.items = items; qp.title = `@${keyword} 结果: ${res.matches.length} (耗时 ${res.elapsed}ms)`;
+          phase = 'results'; currentType = 'string'; lastQuery = raw; return;
         }
-        return;
+        if (type === 'code') {
+          const codesRaw = raw.slice(1).trim();
+          if (!codesRaw) { vscode.window.showInformationMessage('请输入代码'); return; }
+          const { items: codeItems, matchedKeys } = await searchCodesAsync(codesRaw, model, 800, p => {
+            if (p.phase === 'match' && p.total) {
+              qp.title = `# 扫描代码… (${p.processed}/${p.total})`;
+            }
+          });
+          const qpItems: QuickPickItem[] = codeItems.map(ci => {
+            const fk = ci.fileKey; const base = fk.split('/').pop() || fk;
+            const display = (model as any).getDisplayNameForFile ? (model as any).getDisplayNameForFile(fk) : undefined;
+            const label = display || base; const desc: string[] = [];
+            if (display && display !== base) desc.push(base); desc.push('code=' + ci.code);
+            return { key: fk, label, description: desc.join('  '), detail: fk, alwaysShow: true } as QuickPickItem;
+          });
+          qp.items = qpItems; qp.title = `# 代码结果: ${qpItems.length}`;
+          // 异步显示名刷新
+          (async () => {
+            try {
+              await (model as any).ensureMetadataForFiles?.(matchedKeys);
+              let changed = false;
+              const refreshed = qpItems.map(it => {
+                const baseName = it.key.split('/').pop() || it.key;
+                const disp = (model as any).getDisplayNameForFile ? (model as any).getDisplayNameForFile(it.key) : undefined;
+                if (disp && disp !== it.label) {
+                  changed = true;
+                  const codePart = (it.description || '').split(/\s{2,}|\s/).find(p => p.startsWith('code=')) || (it.description || '');
+                  const descParts: string[] = [];
+                  if (disp !== baseName) descParts.push(baseName);
+                  if (codePart) descParts.push(codePart);
+                  return { ...it, label: disp, description: descParts.join('  ') } as QuickPickItem;
+                }
+                return it;
+              });
+              if (changed && phase === 'results' && currentType === 'code') qp.items = refreshed;
+            } catch { /* ignore */ }
+          })();
+          phase = 'results'; currentType = 'code'; lastQuery = raw; return;
+        }
+        // file
+        const token = raw.toLowerCase();
+        const ranked = await rankFileMatchesAsync(token, 8000, 600, p => {
+          if (p.phase === 'match' && p.total) {
+            qp.title = `文件匹配中… (${p.processed}/${p.total})`;
+          }
+        });
+        if (ranked.length === 0) { qp.items = []; qp.title = '无匹配文件'; phase = 'idle'; currentType = null; return; }
+        qp.items = ranked.map(toItem); qp.title = `文件结果: ${ranked.length}${ranked.length >= 600 ? '+' : ''}`;
+        phase = 'results'; currentType = 'file'; lastQuery = raw; return;
+      } finally {
+        qp.busy = false; searching = false;
       }
-      // 默认：打开所选文件
-      const sel = qp.selectedItems[0];
-      if (!sel) return; qp.hide();
-      const uri = vscode.Uri.parse(`pvf:/${sel.key}`);
-      try { await vscode.window.showTextDocument(uri, { preview: true }); }
-      catch (e) { vscode.window.showErrorMessage('打开文件失败: ' + (e as any)?.message); }
     });
-
-    // 如果用户在结果阶段修改了 @ 查询（而不是仅回车），需要重置 atResults 让下一次回车重新检索
-    qp.onDidChangeValue(v => {
-      const trimmed = v.trim();
-      if (trimmed.startsWith('@')) {
-        if (atResults && lastAtQuery && trimmed !== '@' + lastAtQuery) atResults = false;
-        return;
-      }
-      // # 状态变化
-      if (trimmed.startsWith('#')) return; // # 搜索不使用 atResults
-      atResults = false;
-    });
+    // 不再需要旧的 atResults 逻辑，已统一为 phase 控制
 
     qp.show();
   }));
